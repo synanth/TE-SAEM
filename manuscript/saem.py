@@ -56,18 +56,18 @@ def reduce_temp_mixed(i, temp, cooling_rate):
 
 
 
-def accept_sa(ll_new, ll_sa, acceptence_prob, temp):
+def accept_sa(ll_old, ll_sa, acceptence_prob, temp):
     accept = random.random()
-    if ll_sa > ll_new:
+    if ll_sa > ll_old:
         return True
-    elif accept < acceptence_prob * temp:
-        print(accept, acceptence_prob * temp)
+    elif accept < math.exp((ll_sa - ll_old)/temp):
+        print(accept, math.exp((ll_sa - ll_old)/temp))
         return True
     return False
 
 ## em ##
 
-def log_likelihood(theta, len_transcripts, multimapped_reads, readlen, avg_len):
+def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, avg_len):
     log_sum = 0
     for read, tes in multimapped_reads.items():
         if sum([theta[te] / max(len_transcripts[te]-read_lens[read]+1,1) for te in tes]) > 0:
@@ -118,19 +118,22 @@ def em(len_transcripts, read_lens, multimapped_reads, cooling_rate, cooling_sche
     for i in range(1,1000):
         
         frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, avg_len)
-        new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, avg_len)
         sa_abundance = m_step(sa(frac, temp, step_size, neighborhood), len_transcripts, read_lens, multimapped_reads, avg_len)
-        ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, avg_len)
         ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, avg_len)
         ll_sa = log_likelihood(sa_abundance, len_transcripts, multimapped_reads, read_lens, avg_len)
-        accept = accept_sa(ll_new, ll_sa, acceptence_prob, temp)
+        
+        accept = accept_sa(ll_old, ll_sa, acceptence_prob, temp)
         if accept:
             old_abundance = sa_abundance
             diff = ll_sa - ll_old
-        else:
-            old_abundance = new_abundance
-            diff = ll_new - ll_old
-        print(i, diff, ll_old, ll_new, accept, ll_sa)
+            print(i, ll_sa - ll_old, ll_sa, ll_old, accept)
+            continue
+        new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, avg_len)
+        ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, avg_len)
+        diff = ll_new - ll_old
+        old_abundance = new_abundance
+        print(i, diff, ll_old, ll_new)
+
         if abs(diff) < threshold:
             return old_abundance
         temp = reduce_temp(i, temp, cooling_rate, cooling_schedule)
