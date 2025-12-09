@@ -14,8 +14,7 @@ def sa(old_abundance, temp, step_size, neighborhood):
         idx = tes[random.randint(0, len(tes)-1)]
         change = random.uniform(-step_size, step_size)
         sa_abundance[idx] += change
-        if sa_abundance[idx] < 1e-100:
-            sa_abundance[idx] = 0
+        sa_abundance[idx] = max(sa_abundance[idx], 1e-300)
     sa_abundance = {k:v/sum(sa_abundance.values()) for k,v in sa_abundance.items()}
     return sa_abundance
 
@@ -45,10 +44,10 @@ def reduce_temp_exp(i, temp, cooling_rate):
 
 
 def reduce_temp_mixed(i, temp, cooling_rate):
-    if i < 50:
-        temp -= cooling_rate
-    elif i < 20:
+    if i < 20:
         temp *= (1-cooling_rate)
+    elif i < 50:
+        temp -= cooling_rate
     else:
         temp *= (.01**i)
     return max(temp, 0.01)
@@ -75,7 +74,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, avg_len
 
 
 def init_abundance(len_transcripts, multimapped_reads):
-    tes = [x for sublist in multimapped_reads.values() for x in sublist]
+    tes = set([x for sublist in multimapped_reads.values() for x in sublist])
     theta = {k:0 for k in tes}
     
     for te in tes:
@@ -114,7 +113,7 @@ def em(len_transcripts, read_lens, multimapped_reads, cooling_rate, cooling_sche
     avg_len = sum(read_lens.values())/len(read_lens)
 
 #    for i in range(1,10000):
-    for i in range(1,100):
+    for i in range(1,1000):
         sa_abundance = sa(old_abundance, temp, step_size, neighborhood)
         ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, avg_len)
         ll_sa = log_likelihood(sa_abundance, len_transcripts, multimapped_reads, read_lens, avg_len)
