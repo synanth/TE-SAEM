@@ -37,8 +37,8 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens):
     return frac
 
 
-def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes):
-    theta = {k: 0 for k in all_tes}
+def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts):
+    theta = {k: unique_counts.get(k,0) for k in all_tes}
 
     for read, tes in multimapped_reads.items():
         for te in tes:
@@ -51,19 +51,19 @@ def em(len_transcripts, read_lens, multimapped_reads, unique_counts):
     threshold = 0.01
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
     old_abundance = init_abundance(len_transcripts, multimapped_reads, all_tes)
+    ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens)
 
     for i in range(1,10000):
-        
         frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens)
-        new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes)
+        new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts)
         ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens)
-        ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens)
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
 
         if abs(diff) < threshold:
             return {k:v*len(multimapped_reads) for k,v in old_abundance.items()}
         old_abundance = new_abundance
+        ll_old = ll_new
     return {k:v*len(multimapped_reads) for k,v in old_abundance.items()}
 
 
