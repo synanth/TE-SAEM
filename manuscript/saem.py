@@ -39,7 +39,7 @@ def reduce_temp_log(i, temp, cooling_rate):
 
 
 def reduce_temp_exp(i, temp, cooling_rate):
-    temp *= (cooling_rate**i)
+    temp *= (cooling_rate*temp)
     return max(temp, 0.01)
 
 
@@ -49,7 +49,7 @@ def reduce_temp_mixed(i, temp, cooling_rate):
     elif i < 50:
         temp -= cooling_rate
     else:
-        temp *= (.01**i)
+        temp *= cooling_rate
     return max(temp, 0.01)
 
 
