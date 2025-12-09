@@ -199,6 +199,7 @@ if __name__ == '__main__':
             all_tes[te] += non_zero[te]
 
     out_loc = base_loc + "out/saem_" + n_run + ".out"
+
     with open(out_loc, "w") as f:
         for k,v in all_tes.items():
             f.write(k + "," + str(v) + "\n")
