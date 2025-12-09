@@ -3,22 +3,21 @@ import math
 import random
 
 ## sa ##
-def sa(frac, temp, step_size, neighborhood):
-    new_frac = frac.copy()
+def sa(old_abundance, temp, step_size, neighborhood):
+    sa_abundance = old_abundance.copy()
     if temp == 0:
         n_neighbors = 2
     else:
-        n_neighbors = round(len(frac.keys()) * (neighborhood))
-    tes = list(frac.keys())
+        n_neighbors = round(len(old_abundance.keys()) * (neighborhood))
+    tes = list(sa_abundance.keys())
     for n in range(n_neighbors):
         idx = tes[random.randint(0, len(tes)-1)]
         change = random.uniform(-step_size, step_size)
-        new_frac[idx] += change
-        if new_frac[idx] < 1e-5:
-            new_frac[idx] = 0
-    sum_norm = sum(new_frac.values())
-    new_frac = {k:v/sum_norm for k,v in new_frac.items()}
-    return new_frac
+        sa_abundance[idx] += change
+        if sa_abundance[idx] < 1e-100:
+            sa_abundance[idx] = 0
+    sa_abundance = {k:v/sum(sa_abundance.values()) for k,v in sa_abundance.items()}
+    return sa_abundance
 
 
 def reduce_temp(i, temp, cooling_rate, cooling_schedule):
@@ -48,7 +47,7 @@ def reduce_temp_exp(i, temp, cooling_rate):
 def reduce_temp_mixed(i, temp, cooling_rate):
     if i < 50:
         temp -= cooling_rate
-    elif i < 100:
+    elif i < 20:
         temp *= (1-cooling_rate)
     else:
         temp *= (.01**i)
@@ -56,7 +55,7 @@ def reduce_temp_mixed(i, temp, cooling_rate):
 
 
 
-def accept_sa(ll_old, ll_sa, acceptence_prob, temp):
+def accept_sa(ll_old, ll_sa, temp):
     accept = random.random()
     if ll_sa > ll_old:
         return True
@@ -71,7 +70,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, avg_len
     log_sum = 0
     for read, tes in multimapped_reads.items():
         if sum([theta[te] / max(len_transcripts[te]-read_lens[read]+1,1) for te in tes]) > 0:
-            log_sum += math.log(sum([theta[te] / max(len_transcripts[te]-read_lens[read]+1,1) for te in tes]))
+            log_sum += math.log(sum([theta[te] / max(len_transcripts[te]-read_lens[read]+1,1) for te in tes]) + 1e-300)
     return log_sum
 
 
@@ -115,19 +114,18 @@ def em(len_transcripts, read_lens, multimapped_reads, cooling_rate, cooling_sche
     avg_len = sum(read_lens.values())/len(read_lens)
 
 #    for i in range(1,10000):
-    for i in range(1,1000):
-        
-        frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, avg_len)
-        sa_abundance = m_step(sa(frac, temp, step_size, neighborhood), len_transcripts, read_lens, multimapped_reads, avg_len)
+    for i in range(1,100):
+        sa_abundance = sa(old_abundance, temp, step_size, neighborhood)
         ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, avg_len)
         ll_sa = log_likelihood(sa_abundance, len_transcripts, multimapped_reads, read_lens, avg_len)
         
-        accept = accept_sa(ll_old, ll_sa, acceptence_prob, temp)
+        accept = accept_sa(ll_old, ll_sa, temp)
         if accept:
             old_abundance = sa_abundance
             diff = ll_sa - ll_old
             print(i, ll_sa - ll_old, ll_sa, ll_old, accept)
             continue
+        frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, avg_len)
         new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, avg_len)
         ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, avg_len)
         diff = ll_new - ll_old
