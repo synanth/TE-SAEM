@@ -12,11 +12,10 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens):
     return log_sum
 
 
-def init_abundance(len_transcripts, multimapped_reads):
-    tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
-    theta = {k:0 for k in tes}
+def init_abundance(len_transcripts, multimapped_reads, all_tes):
+    theta = {k:0 for k in all_tes}
 
-    for te in tes:
+    for te in all_tes:
         theta[te] = random.random()
 #        theta[te] = (1/max(len_transcripts[te]-avg_len+1,1)+1e-12) 
     means_sum = sum(theta.values()) 
@@ -38,9 +37,8 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens):
     return frac
 
 
-def m_step(frac, len_transcripts, read_lens, multimapped_reads):
-    tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
-    theta = {k: 0 for k in tes}
+def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes):
+    theta = {k: 0 for k in all_tes}
 
     for read, tes in multimapped_reads.items():
         for te in tes:
@@ -51,22 +49,21 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads):
 
 def em(len_transcripts, read_lens, multimapped_reads, unique_counts):
     threshold = 0.01
-    avg_len = sum(read_lens.values())/len(read_lens)
-    old_abundance = init_abundance(len_transcripts, multimapped_reads)
+    all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
+    old_abundance = init_abundance(len_transcripts, multimapped_reads, all_tes)
 
     for i in range(1,10000):
-#    for i in range(1,20):
         
         frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens)
-        new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads)
+        new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes)
         ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens)
         ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens)
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
-        old_abundance = new_abundance
 
         if abs(diff) < threshold:
             return {k:v*len(multimapped_reads) for k,v in old_abundance.items()}
+        old_abundance = new_abundance
     return {k:v*len(multimapped_reads) for k,v in old_abundance.items()}
 
 
