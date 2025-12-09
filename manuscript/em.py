@@ -37,8 +37,8 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens):
     return frac
 
 
-def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts):
-    theta = {k: unique_counts.get(k,0) for k in all_tes}
+def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts, avg_len):
+    theta = {k: unique_counts.get(k,0)/(max(len_transcripts[k]-avg_len +1, 1)) for k in all_tes}
 
     for read, tes in multimapped_reads.items():
         for te in tes:
@@ -50,12 +50,14 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
 def em(len_transcripts, read_lens, multimapped_reads, unique_counts):
     threshold = 0.01
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
+    avg_len = sum(read_lens.values())/ len(read_lens)
+
     old_abundance = init_abundance(len_transcripts, multimapped_reads, all_tes)
     ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens)
 
     for i in range(1,10000):
         frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens)
-        new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts)
+        new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts, avg_len)
         ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens)
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
