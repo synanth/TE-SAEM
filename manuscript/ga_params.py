@@ -40,7 +40,7 @@ def mutate(params, rate):
     return params
 
 
-def run_saem(cooling_rate, cooling_schedule, step_size, neighborhood, acceptence_prob, n_run):
+def run_saem(cooling_rate, cooling_schedule, step_size, neighborhood, acceptence_prob, n_run, saem_loc):
     saem_call = "python3 " + saem_loc + " " + str(cooling_rate) + " " + str(cooling_schedule) + " " + str(step_size) + " " + str(neighborhood) + " " + str(acceptence_prob) + " " + str(n_run)
     subprocess.run(saem_call, shell=True)
 
@@ -62,7 +62,7 @@ def load_data():
 
 
 if __name__ == '__main__':
-    base_loc = "/home/stexocae/li_lab/saem/scripts/"
+    base_loc = "/home/stexocae/li_lab/saem/manuscript/"
     saem_loc = base_loc  + "saem.py"
     eval_loc = base_loc + "eval.py"
 
@@ -80,7 +80,7 @@ if __name__ == '__main__':
     while i < n_generations:
         res = []
         for e, x in enumerate(population):
-            res += [run_saem(x[0], x[1], x[2], x[3],x[4], e)]
+            res += [run_saem(x[0], x[1], x[2], x[3],x[4], e, saem_loc)]
         res = [r + [2*(r[-1] * r[-2])/(r[-1] + r[-2])] for r in res]
         top = sorted(res, reverse=True, key=lambda x:x[-3])[:n_best]
         best = top[0][:5]
