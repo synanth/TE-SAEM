@@ -39,7 +39,7 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens):
 
 def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts):#, avg_len):
 #    theta = {te: unique_counts.get(te,0)/(max(len_transcripts[te]-avg_len +1, 1)) for te in all_tes}
-    theta = {te: unique_counts.get(te,0) for te in all_tes}
+    theta = {te:0 for te in all_tes}
 
     for read, tes in multimapped_reads.items():
         for te in tes:
