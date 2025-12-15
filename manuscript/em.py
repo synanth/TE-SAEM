@@ -8,7 +8,7 @@ import random
 def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens):
     log_sum = 0
     for read, tes in multimapped_reads.items():
-        log_sum += math.log(sum([theta[te] / max(len_transcripts[te]-read_lens[read]+1,1) for te in tes]))
+        log_sum += math.log(max(sum([theta[te] / max(len_transcripts[te]-read_lens[read]+1,1) for te in tes]), 1e-300))
     return log_sum
 
 
@@ -32,6 +32,9 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens):
             e_len = max(len_transcripts[te]-read_lens[read]+1,1)
             frac[read][te] = (theta[te] / e_len) 
             frac_sum += theta[te] /e_len
+        if frac_sum == 0:
+            frac[read][te] = 1.0/len(tes)
+            continue
         for te in tes:
             frac[read][te] /= frac_sum
     return frac
@@ -43,6 +46,7 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
     for read, tes in multimapped_reads.items():
         for te in tes:
             theta[te] += frac[read][te]
+    theta = {k:max(v, 1e-12) for k,v in theta.items()}
     theta_sum = sum(theta.values())
     theta = {k:v/theta_sum for k,v in theta.items()}
     return theta
