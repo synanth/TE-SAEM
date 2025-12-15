@@ -44,7 +44,7 @@ def m_step(frac, multimapped_reads, all_tes):
         for te in tes:
             theta[te] += frac[read][te]
     theta_sum = sum(theta.values())
-    theta = {k:v/theta_sum for k,v in theta}
+    theta = {k:v/theta_sum for k,v in theta.items()}
     return theta
 
 
@@ -57,7 +57,7 @@ def em(multimapped_reads, e_lens):
 
     for i in range(1,10000):
         frac = e_step(old_abundance, multimapped_reads, e_lens)
-        new_abundance = m_step(frac, multimapped_reads, all_tes, e_lens)
+        new_abundance = m_step(frac, multimapped_reads, all_tes)
         ll_new = log_likelihood(new_abundance, multimapped_reads, e_lens)
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
