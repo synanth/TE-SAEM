@@ -11,8 +11,7 @@ def log_likelihood(theta, multimapped_reads, e_lens):
         read_sum = 0
         for te in tes:
             read_sum += theta[te]/e_lens[te]
-        if read_sum > 0:
-            log_sum += math.log(read_sum)
+        log_sum += math.log(read_sum)
     return log_sum
 
 
@@ -34,8 +33,6 @@ def e_step(theta, multimapped_reads, e_lens):
         for te in tes:
             frac[read][te] = theta[te]/e_lens[te]
             frac_sum += frac[read][te]
-        if frac_sum == 0:
-            print("WtF")
         for te in tes:
             frac[read][te] /= frac_sum
     return frac
@@ -46,7 +43,7 @@ def m_step(frac, multimapped_reads, all_tes, e_lens):
 
     for read, tes in multimapped_reads.items():
         for te in tes:
-            theta[te] += frac[read][te] 
+            theta[te] += max(frac[read][te] , 1e-300)
 
     theta_sum = sum(theta.values())
     theta = {k:v/theta_sum for k,v in theta.items()}
