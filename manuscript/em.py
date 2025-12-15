@@ -46,7 +46,8 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
 
     for read, tes in multimapped_reads.items():
         for te in tes:
-            theta[te] += frac[read][te]
+            e_len = max(len_transcripts[te]-read_lens[read]+1,1)
+            theta[te] += frac[read][te] / e_len
     theta = {k:v/sum(theta.values()) for k,v in theta.items()}
     return theta
 
