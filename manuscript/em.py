@@ -7,11 +7,10 @@ import random
 
 def log_likelihood(theta, multimapped_reads, e_lens):
     log_sum = 0
-    for read,tes in multimapped_reads.items():
-        read_sum = 0
-        for te in tes:
-            read_sum += theta[te]/e_lens[te]
-        log_sum += math.log(read_sum)
+    for read, tes in multimapped_reads.items():
+        xs = [math.log(theta[te]) - math.log(e_lens[te]) for te in tes]
+        m = max(xs)
+        log_sum += m + math.log(sum(math.exp(x-m) for x in xs))
     return log_sum
 
 
@@ -19,7 +18,8 @@ def init_abundance(multimapped_reads, all_tes):
     theta = {k:0 for k in all_tes}
 
     for te in all_tes:
-        theta[te] = random.random()
+        #theta[te] = random.random()
+        theta[te] = 1/len(all_tes)
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
     return theta
@@ -43,8 +43,8 @@ def m_step(frac, multimapped_reads, all_tes, e_lens):
 
     for read, tes in multimapped_reads.items():
         for te in tes:
-            theta[te] += max(frac[read][te] , 1e-300)
-
+            theta[te] += frac[read][te]
+    theta = {k:max(v, 1e-12) for k,v in theta.items()}
     theta_sum = sum(theta.values())
     theta = {k:v/theta_sum for k,v in theta.items()}
     return theta
