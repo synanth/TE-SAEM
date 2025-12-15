@@ -93,6 +93,7 @@ if __name__ == '__main__':
             buff = line.strip().split()
             name = buff[0].split("/")[0]
             read_lens[name] = abs(int(buff[8]))
+    read_lens = {k:v/sum(read_lens.values()) for k,v in read_lens.items()}
     
     with open(gtf_loc, "r") as f:
         lines = f.readlines()
