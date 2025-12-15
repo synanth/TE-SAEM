@@ -21,7 +21,6 @@ def init_abundance(len_transcripts, multimapped_reads, all_tes):
 
     for te in all_tes:
         theta[te] = random.random()
-#        theta[te] = (1/max(len_transcripts[te]-avg_len+1,1)+1e-12) 
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
     return theta
@@ -34,7 +33,7 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens):
         frac_sum = 0
         for te in tes:
             e_len = max(len_transcripts[te]-read_lens[read]+1,1)
-            frac[read][te] = (theta[te] / e_len) 
+            frac[read][te] = (theta[te] )/ e_len 
             frac_sum += theta[te] /e_len
         for te in tes:
             frac[read][te] /= frac_sum
@@ -46,8 +45,7 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
 
     for read, tes in multimapped_reads.items():
         for te in tes:
-            e_len = max(len_transcripts[te]-read_lens[read]+1,1)
-            theta[te] += frac[read][te] / e_len
+            theta[te] += frac[read][te] 
     theta = {k:v/sum(theta.values()) for k,v in theta.items()}
     return theta
 
