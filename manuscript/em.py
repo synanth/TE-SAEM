@@ -111,7 +111,7 @@ if __name__ == '__main__':
             multimapped_reads[buff[0]] = buff[1:]
 
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
-    e_lens = {te:0 for r in all_tes}
+    e_lens = {te:0 for te in all_tes}
     avg_len = int(sum(read_lens.values())/len(read_lens))
     for te in e_lens:
         e_lens[te] = max(len_transcripts[te] - avg_len+1, 1)
