@@ -12,7 +12,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens):
         for te in tes:
             e_len = max(len_transcripts[te] - read_lens[read] +1, 1)
             s += theta[te] / e_len
-        log_sum += max(s, 1e-300)
+        log_sum += math.log(max(s, 1e-300))
     return log_sum
 
 
