@@ -11,7 +11,8 @@ def log_likelihood(theta, multimapped_reads, e_lens):
         read_sum = 0
         for te in tes:
             read_sum += theta[te]/e_lens[te]
-        log_sum += math.log(read_sum + 1e-300)
+        if read_sum > 0:
+            log_sum += math.log(read_sum)
     return log_sum
 
 
@@ -33,6 +34,8 @@ def e_step(theta, multimapped_reads, e_lens):
         for te in tes:
             frac[read][te] = theta[te]/e_lens[te]
             frac_sum += frac[read][te]
+        if frac_sum == 0:
+            print("WtF")
         for te in tes:
             frac[read][te] /= frac_sum
     return frac
@@ -43,7 +46,7 @@ def m_step(frac, multimapped_reads, all_tes, e_lens):
 
     for read, tes in multimapped_reads.items():
         for te in tes:
-            theta[te] += frac[read][te] * e_lens[te]
+            theta[te] += frac[read][te] 
 
     theta_sum = sum(theta.values())
     theta = {k:v/theta_sum for k,v in theta.items()}
@@ -65,10 +68,10 @@ def em(multimapped_reads, e_lens):
         print(i, diff, ll_old, ll_new)
 
         if abs(diff) < threshold:
-            return {k:v*len(multimapped_reads) for k,v in old_abundance.items()}
+            return {k:v*len(multimapped_reads) for k,v in new_abundance.items()}
         old_abundance = new_abundance
         ll_old = ll_new
-    return {k:v*len(multimapped_reads) for k,v in old_abundance.items()}
+    return {k:v*len(multimapped_reads) for k,v in new_abundance.items()}
 
 
 
