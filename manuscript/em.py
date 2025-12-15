@@ -5,13 +5,13 @@ import random
 
 ## em ##
 
-def log_likelihood(theta, multimapped_reads, l_effs):
+def log_likelihood(theta, multimapped_reads, e_lens):
     log_sum = 0
-    for read, tes in multimapped_reads.items():
-        s = 0
+    for read,tes in multimapped_reads.items():
+        read_sum = 0
         for te in tes:
-            s += theta[te] / l_effs[te]
-        log_sum += math.log(max(s, 1e-300))
+            read_sum += theta[te]/e_lens[read][te]
+        log_sum += math.log(read_sum + 1e-300)
     return log_sum
 
 
@@ -25,40 +25,40 @@ def init_abundance(multimapped_reads, all_tes):
     return theta
 
 
-def e_step(theta, multimapped_reads, l_effs):
+def e_step(theta, multimapped_reads, e_lens):
     frac = {k:{} for k in multimapped_reads}
 
     for read, tes in multimapped_reads.items():
         frac_sum = 0
         for te in tes:
-            frac[read][te] = (theta[te] )/ l_effs[te]
-            frac_sum += theta[te] / l_effs[te]
+            frac[read][te] = theta[te]/e_lens[read][te]
+            frac_sum += frac[read][te]
         for te in tes:
             frac[read][te] /= frac_sum
     return frac
 
 
-def m_step(frac, multimapped_reads, all_tes, unique_counts):
+def m_step(frac, multimapped_reads, all_tes):
     theta = {k: 0 for k in all_tes}
-
     for read, tes in multimapped_reads.items():
         for te in tes:
-            theta[te] += frac[read][te] 
-    theta = {k:v/sum(theta.values()) for k,v in theta.items()}
+            theta[te] += frac[read][te]
+    theta_sum = sum(theta.values())
+    theta = {k:v/theta_sum for k,v in theta}
     return theta
 
 
-def em(len_transcripts, multimapped_reads, unique_counts, frag_mean):
+def em(multimapped_reads, e_lens):
     threshold = 0.01
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
-    l_effs = {te:max(len_transcripts[te] - frag_mean+1, 1) for te in all_tes}
+    
     old_abundance = init_abundance(multimapped_reads, all_tes)
-    ll_old = log_likelihood(old_abundance, multimapped_reads, l_effs)
+    ll_old = log_likelihood(old_abundance, multimapped_reads, e_lens)
 
     for i in range(1,10000):
-        frac = e_step(old_abundance, multimapped_reads, l_effs)
-        new_abundance = m_step(frac, multimapped_reads, all_tes, unique_counts)
-        ll_new = log_likelihood(new_abundance, multimapped_reads, l_effs)
+        frac = e_step(old_abundance, multimapped_reads, e_lens)
+        new_abundance = m_step(frac, multimapped_reads, all_tes, e_lens)
+        ll_new = log_likelihood(new_abundance, multimapped_reads, e_lens)
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
 
@@ -81,8 +81,7 @@ if __name__ == '__main__':
     len_transcripts = {}
     unique_counts = {}
     multimapped_reads = {}
-    frag_lens = {}
-    e_lens = {}
+    read_lens = {}
 
     with open(sam_loc, "r") as f:
         lines = f.readlines()
@@ -91,8 +90,7 @@ if __name__ == '__main__':
                 continue
             buff = line.strip().split()
             name = buff[0].split("/")[0]
-            frag_lens[name] = abs(int(buff[8]))
-    frag_mean = int(sum(frag_lens.values())/len(frag_lens.values()))
+            read_lens[name] = len(buff[9])
     
     with open(gtf_loc, "r") as f:
         lines = f.readlines()
@@ -112,7 +110,12 @@ if __name__ == '__main__':
             buff = line.strip().split(",")
             multimapped_reads[buff[0]] = buff[1:]
 
-    em_counts = em(len_transcripts, multimapped_reads, unique_counts, frag_mean)
+    e_lens = {r:{} for r in read_lens}
+    for read,tes in multimapped_reads.items():
+        for te in tes:
+            e_lens[read][te] = max(len_transcripts[te] - read_lens[read] + 1,1)
+
+    em_counts = em(multimapped_reads, e_lens)
     non_zero = {k:int(v) for k,v in em_counts.items()}
 
     all_tes = {k:0 for k in len_transcripts}
