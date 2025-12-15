@@ -8,7 +8,7 @@ import random
 def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens):
     log_sum = 0
     for read, tes in multimapped_reads.items():
-        log_sum += math.log(sum([theta[te] / max(len_transcripts[te]-read_lens[read]+1,1) for te in tes]))
+        log_sum += math.log(max(sum([theta[te] / max(len_transcripts[te]-read_lens[read]+1,1) for te in tes]), 1e-300))
     return log_sum
 
 
