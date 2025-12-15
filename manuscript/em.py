@@ -33,7 +33,8 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens):
             frac[read][te] = (theta[te] / e_len) 
             frac_sum += theta[te] /e_len
         if frac_sum == 0:
-            frac[read][te] = 1.0/len(tes)
+            for te in tes:
+                frac[read][te] = 1.0/len(tes)
             continue
         for te in tes:
             frac[read][te] /= frac_sum
