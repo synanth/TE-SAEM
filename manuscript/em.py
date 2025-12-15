@@ -10,7 +10,7 @@ def log_likelihood(theta, multimapped_reads, e_lens):
     for read,tes in multimapped_reads.items():
         read_sum = 0
         for te in tes:
-            read_sum += theta[te]/e_lens[read][te]
+            read_sum += theta[te]/e_lens[te]
         log_sum += math.log(read_sum + 1e-300)
     return log_sum
 
@@ -31,7 +31,7 @@ def e_step(theta, multimapped_reads, e_lens):
     for read, tes in multimapped_reads.items():
         frac_sum = 0
         for te in tes:
-            frac[read][te] = theta[te]/e_lens[read][te]
+            frac[read][te] = theta[te]/e_lens[te]
             frac_sum += frac[read][te]
         for te in tes:
             frac[read][te] /= frac_sum
@@ -110,10 +110,11 @@ if __name__ == '__main__':
             buff = line.strip().split(",")
             multimapped_reads[buff[0]] = buff[1:]
 
-    e_lens = {r:{} for r in read_lens}
-    for read,tes in multimapped_reads.items():
-        for te in tes:
-            e_lens[read][te] = max(len_transcripts[te] - read_lens[read] + 1,1)
+    all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
+    e_lens = {te:0 for r in all_tes}
+    avg_len = int(sum(read_lens.values())/len(read_lens))
+    for te in e_lens:
+        e_lens[te] = max(len_transcripts[te] - avg_len+1, 1)
 
     em_counts = em(multimapped_reads, e_lens)
     non_zero = {k:int(v) for k,v in em_counts.items()}
