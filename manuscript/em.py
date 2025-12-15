@@ -5,18 +5,17 @@ import random
 
 ## em ##
 
-def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens):
+def log_likelihood(theta, multimapped_reads, l_effs):
     log_sum = 0
     for read, tes in multimapped_reads.items():
         s = 0
         for te in tes:
-            e_len = max(len_transcripts[te] - read_lens[read] +1, 1)
-            s += theta[te] / e_len
+            s += theta[te] / l_effs[te]
         log_sum += math.log(max(s, 1e-300))
     return log_sum
 
 
-def init_abundance(len_transcripts, multimapped_reads, all_tes):
+def init_abundance(multimapped_reads, all_tes):
     theta = {k:0 for k in all_tes}
 
     for te in all_tes:
@@ -26,21 +25,20 @@ def init_abundance(len_transcripts, multimapped_reads, all_tes):
     return theta
 
 
-def e_step(theta, multimapped_reads, len_transcripts, read_lens):
+def e_step(theta, multimapped_reads, l_effs):
     frac = {k:{} for k in multimapped_reads}
 
     for read, tes in multimapped_reads.items():
         frac_sum = 0
         for te in tes:
-            e_len = max(len_transcripts[te]-read_lens[read]+1,1)
-            frac[read][te] = (theta[te] )/ e_len 
-            frac_sum += theta[te] /e_len
+            frac[read][te] = (theta[te] )/ l_effs[te]
+            frac_sum += theta[te] / l_effs[te]
         for te in tes:
             frac[read][te] /= frac_sum
     return frac
 
 
-def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts):
+def m_step(frac, multimapped_reads, all_tes, unique_counts):
     theta = {k: 0 for k in all_tes}
 
     for read, tes in multimapped_reads.items():
@@ -50,16 +48,17 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
     return theta
 
 
-def em(len_transcripts, read_lens, multimapped_reads, unique_counts):
+def em(len_transcripts, multimapped_reads, unique_counts, frag_mean):
     threshold = 0.01
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
-    old_abundance = init_abundance(len_transcripts, multimapped_reads, all_tes)
-    ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens)
+    l_effs = {te:max(len_transcripts[te] - frag_mean+1, 1) for te in all_tes}
+    old_abundance = init_abundance(multimapped_reads, all_tes)
+    ll_old = log_likelihood(old_abundance, multimapped_reads, l_effs)
 
     for i in range(1,10000):
-        frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens)
-        new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts)
-        ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens)
+        frac = e_step(old_abundance, multimapped_reads, l_effs)
+        new_abundance = m_step(frac, multimapped_reads, all_tes, unique_counts)
+        ll_new = log_likelihood(new_abundance, multimapped_reads, l_effs)
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
 
@@ -82,7 +81,7 @@ if __name__ == '__main__':
     len_transcripts = {}
     unique_counts = {}
     multimapped_reads = {}
-    read_lens = {}
+    frag_lens = {}
     e_lens = {}
 
     with open(sam_loc, "r") as f:
@@ -92,8 +91,8 @@ if __name__ == '__main__':
                 continue
             buff = line.strip().split()
             name = buff[0].split("/")[0]
-            read_lens[name] = abs(int(buff[8]))
-    read_lens = {k:v/sum(read_lens.values()) for k,v in read_lens.items()}
+            frag_lens[name] = abs(int(buff[8]))
+    frag_mean = int(sum(frag_lens.values())/len(frag_lens.values()))
     
     with open(gtf_loc, "r") as f:
         lines = f.readlines()
@@ -113,8 +112,7 @@ if __name__ == '__main__':
             buff = line.strip().split(",")
             multimapped_reads[buff[0]] = buff[1:]
 
-
-    em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts)
+    em_counts = em(len_transcripts, multimapped_reads, unique_counts, frag_mean)
     non_zero = {k:int(v) for k,v in em_counts.items()}
 
     all_tes = {k:0 for k in len_transcripts}
