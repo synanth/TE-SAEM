@@ -5,17 +5,11 @@ import random
 ## sa ##
 def sa(old_abundance, temp, step_size, neighborhood):
     sa_abundance = old_abundance.copy()
-    if temp == 0.01:
-        n_neighbors = int(len(sa_abundance)/10)
-    else:
-        n_neighbors = round(len(sa_abundance) * (neighborhood))
+    n_neighbors = max(1, round(len(sa_abundance)*temp*neighborhood))
     tes = list(sa_abundance.keys())
-    for n in range(n_neighbors):
-        idx = tes[random.randint(0, len(tes)-1)]
+    for idx in random.sample(tes, n_neighbors):
         change = random.uniform(-step_size, step_size)
-        sa_abundance[idx] += change
-        if sa_abundance[idx] < 1e-100:
-            sa_abundance[idx] = 1e-100
+        sa_abundance[idx] = max(sa_abundance[idx] +change, 1e-100)
     sum_norm = sum(sa_abundance.values())
     sa_abundance= {k:v/sum_norm for k,v in sa_abundance.items()}
     return sa_abundance
@@ -27,12 +21,13 @@ def reduce_temp(temp, cooling_rate):
     return new_temp 
 
 
-def accept_sa(ll_old, ll_sa, temp, i):
+def accept_sa(ll_old, ll_sa, temp, n):
     accept = max(random.random(), 1e-16)
     if ll_sa > ll_old:
         return True
-    deltaE = (ll_sa -ll_old)/ll_old
-    if accept < deltaE*(temp):
+    deltaE = (ll_sa -ll_old)/ll_old * temp
+    deltaE = math.exp((ll_sa-ll_old)/(temp*n))
+    if accept < deltaE:
         print(deltaE*(temp), accept)
         return True
     return False
@@ -105,8 +100,8 @@ def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rat
         sa_abundance = sa(old_abundance, temp, step_size, neighborhood)
         ll_sa = log_likelihood(sa_abundance, len_transcripts, multimapped_reads, read_lens)
         ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens)
-        if accept_sa(ll_old, ll_sa, temp, i):
-            print(i, ll_old, ll_sa, temp)
+        if accept_sa(ll_old, ll_sa, temp, len(multimapped_reads)):
+ #           print(i, ll_old, ll_sa, temp)
             old_abundance = sa_abundance
             temp = reduce_temp(temp, cooling_rate)
             continue
@@ -114,7 +109,7 @@ def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rat
         new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes)
         ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens)
         diff = ll_new - ll_old
-        print(i, diff, ll_old, ll_new)
+#        print(i, diff, ll_old, ll_new)
         if abs(diff) < threshold:
             return {k:v*len(multimapped_reads) for k,v in old_abundance.items()}
         temp = reduce_temp(temp, cooling_rate)
