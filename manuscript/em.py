@@ -12,14 +12,14 @@ def gc_weight(gc, gc_bias, gc_w=.01, min_w=0.5,max_w=2.0):
     return max(min(gc_bias[bin_idx], max_w), min_w)
 
 
-def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores):
+def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores, gc):
     ll = 0.0
     for read, tes in multimapped_reads.items():
         max_score = max(align_scores[read].values())
         tau = .5
         xs = [
-            math.log(theta[te]) + (align_scores[read][te] - max_score)/tau + gc_weights[read] -
-            math.log(max(len_transcripts[te] - read_lens[read] + 1, 20))
+            math.log(theta[te]) + (align_scores[read][te] - max_score)/tau + gc_weights[read] + gc[te] -
+            math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
             for te in tes
         ]
         m = max(xs)
@@ -38,7 +38,7 @@ def init_abundance(len_transcripts, multimapped_reads, all_tes):
     return theta
 
 
-def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores):
+def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores, gc):
     frac = {k:{} for k in multimapped_reads}
 
     for read, tes in multimapped_reads.items():
@@ -46,8 +46,8 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, ali
         max_score = max(align_scores[read].values())
         tau = .5
         for te in tes:
-            e_len = max(len_transcripts[te] - read_lens[read] + 1, 20)
-            xs.append(math.log(theta[te]) + (align_scores[read][te]-max_score)/tau + gc_weights[read] - math.log(e_len))
+            e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
+            xs.append(math.log(theta[te]) + (align_scores[read][te]-max_score)/tau + gc_weights[read] + gc[te] - math.log(e_len))
 
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
@@ -74,16 +74,16 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
     return theta
 
 
-def em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores):
+def em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores,gc):
     threshold = 1e-6
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
     old_abundance = init_abundance(len_transcripts, multimapped_reads, all_tes)
-    ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores)
+    ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores, gc)
 
     for i in range(1,10000):
-        frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores)
+        frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores, gc)
         new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts)
-        ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores)
+        ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores, gc)
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
 
@@ -192,11 +192,11 @@ if __name__ == '__main__':
             align_scores[read] = {te:float(te_scores[e]) for e, te in enumerate(te_names)}
 
 
-#    align_scores = norm_align_scores(align_scores)
     gc_bias = calc_gc_bias(unique_seq)
     gc_weights = {read:math.log(gc_weight(calc_gc_frac(multi_seq[read]), gc_bias)) for read in multi_seq}
+    gc = {k:math.log(gc_weight(v,gc_bias)) for k,v in gc.items()}
 
-    em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores)
+    em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores, gc)
     total_em = sum(em_counts.values())
     em_frac = {k:v/total_em for k,v in em_counts.items()}
     all_tes = {k:0 for k in len_transcripts}
