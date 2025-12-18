@@ -16,9 +16,9 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weig
     ll = 0.0
     for read, tes in multimapped_reads.items():
         max_score = max(align_scores[read].values())
-        tau = 1
+        tau = 2.0
         xs = [
-            math.log(theta[te]) + (align_scores[read][te] - max_score)/tau + gc_weights[read] + gc[te] -
+            math.log(theta[te]) + (align_scores[read][te] - max_score)/tau + gc[te] -
             math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
             for te in tes
         ]
@@ -46,10 +46,10 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, ali
     for read, tes in multimapped_reads.items():
         xs = []
         max_score = max(align_scores[read].values())
-        tau = 1
+        tau = 2.0
         for te in tes:
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
-            xs.append(math.log(theta[te]) + (align_scores[read][te]-max_score)/tau + gc_weights[read] + gc[te] - math.log(e_len))
+            xs.append(math.log(theta[te]) + (align_scores[read][te]-max_score)/tau + gc[te] - math.log(e_len))
 
         xs.append(math.log(theta["_noise"]) + -5)
         tes_plus = tes + ["_noise"]
@@ -65,8 +65,13 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, ali
 def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts):
     alpha = .3
     eps = 1e-12
-#    theta = {k: 0 for k in all_tes}
-    theta = {k: unique_counts.get(k,0) + (alpha-1) for k in all_tes}
+    theta = {k: 0 for k in all_tes}
+    for k in all_tes:
+        if k == "_noise":
+            theta[k] = 1.0
+        else:
+            theta[k] = unique_counts.get(k, 0) + alpha
+#    theta = {k: unique_counts.get(k,0) + (alpha-1) for k in all_tes}
 
     for read, tes in multimapped_reads.items():
         for te in tes:
@@ -207,6 +212,7 @@ if __name__ == '__main__':
     gc = {k:math.log(gc_weight(v,gc_bias)) for k,v in gc.items()}
 
     em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores, gc)
+    print(em_counts["_noise"])
     if "_noise" in em_counts:
         del em_counts["_noise"]
     total_em = sum(em_counts.values())
@@ -216,7 +222,7 @@ if __name__ == '__main__':
     for te in all_tes:
         uc = unique_counts.get(te,0)
         frac = em_frac.get(te,0)
-        if uc > 0 or frac > 5e-4:
+        if uc > 0 or frac > 5e-5:
             all_tes[te] += uc + int(em_counts.get(te,0))
 
     
