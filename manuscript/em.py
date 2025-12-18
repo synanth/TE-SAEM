@@ -14,6 +14,7 @@ def gc_weight(gc, gc_bias, gc_w=.01, min_w=0.5,max_w=2.0):
 
 def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores, gc):
     ll = 0.0
+    log_p_noise = -math.log(len(len_transcripts))
     for read, tes in multimapped_reads.items():
         max_score = max(align_scores[read].values())
         tau = 2.0
@@ -22,7 +23,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weig
             math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
             for te in tes
         ]
-        xs.append(math.log(theta["_noise"]) + -5)
+        xs.append(math.log(theta["_noise"]) + log_p_noise)
         m = max(xs)
         ll += m + math.log(sum(math.exp(x - m) for x in xs))
     ll = ll/len(multimapped_reads)
@@ -42,7 +43,7 @@ def init_abundance(len_transcripts, multimapped_reads, all_tes):
 
 def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores, gc):
     frac = {k:{} for k in multimapped_reads}
-
+    log_p_noise = math.log(len(len_transcripts))
     for read, tes in multimapped_reads.items():
         xs = []
         max_score = max(align_scores[read].values())
@@ -51,7 +52,7 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, ali
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
             xs.append(math.log(theta[te]) + (align_scores[read][te]-max_score)/tau + gc[te] - math.log(e_len))
 
-        xs.append(math.log(theta["_noise"]) + -5)
+        xs.append(math.log(theta["_noise"]) + log_p_noise)
         tes_plus = tes + ["_noise"]
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
