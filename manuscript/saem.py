@@ -3,10 +3,14 @@ import math
 import random
 
 ## sa ##
-def sa(old_abundance, temp, step_size, neighborhood):
+def sa(old_abundance, temp):
     sa_abundance = old_abundance.copy()
-    n_neighbors = max(1, min(round(len(sa_abundance)*temp*neighborhood),50))
+    n_neighbors = max(1, min(round(len(sa_abundance)*temp),50))
     tes = list(sa_abundance.keys())
+    vals = sa_abundance.values()
+    mean_val = sum(vals)/len(tes)
+    step_size = math.sqrt(sum((v- mean_val)**2 for v in vals))
+
     for idx in random.sample(tes, n_neighbors):
         change = random.uniform(-step_size*temp, step_size*temp)
         sa_abundance[idx] = max(sa_abundance[idx] +change, 1e-100)
@@ -24,12 +28,13 @@ def reduce_temp(temp, cooling_rate):
 def accept_sa(ll_old, ll_sa, temp, n):
     accept = max(random.random(), 1e-16)
     if ll_sa > ll_old:
+        print(">")
         return True
     deltaE = (ll_sa -ll_old)/ll_old * temp
     deltaE = math.exp((ll_sa-ll_old)/(temp*n))
     print(deltaE, accept)
     if accept < deltaE:
-        print(deltaE*(temp), accept)
+        print(deltaE)
         return True
     return False
 
@@ -92,7 +97,7 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes):
     return theta
 
 
-def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, step_size, neighborhood, gc):
+def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, gc):
 
     threshold = 0.01
     temp = 1.0
@@ -101,12 +106,11 @@ def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rat
 
     #for i in range(1,10000):
     for i in range(1,5000):
-        sa_abundance = sa(old_abundance, temp, step_size, neighborhood)
+        sa_abundance = sa(old_abundance, temp)
         ll_sa = log_likelihood(sa_abundance, len_transcripts, multimapped_reads, read_lens, gc)
         ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, gc)
         if accept_sa(ll_old, ll_sa, temp, len(multimapped_reads)):
             print(i, ll_old, ll_sa, temp)
-            print("accept")
             old_abundance = sa_abundance
             temp = reduce_temp(temp, cooling_rate)
             continue
@@ -130,9 +134,7 @@ def gc_content(read):
 if __name__ == '__main__':
 
     cooling_rate = float(sys.argv[1])
-    step_size = float(sys.argv[2])
-    neighborhood = float(sys.argv[3])
-    n_run = sys.argv[4]
+    n_run = sys.argv[2]
 
     base_loc = "/home/stexocae/li_lab/saem/"
     gtf_loc = base_loc + "refs/hs1.gtf"
@@ -186,7 +188,7 @@ if __name__ == '__main__':
             read_lens[name] = len(buff[9])
     
 
-    em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, step_size, neighborhood, gc)
+    em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, gc)
     non_zero = {k:round(v) for k,v in em_counts.items() if v > 3}
 
     all_tes = {k:0 for k in len_transcripts}
