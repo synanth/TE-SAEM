@@ -117,7 +117,10 @@ def norm_align_scores(align_scores, tau=5.0):
     for read, tes in align_scores.items():
         max_score = max(tes.values())
         weights = {te: math.exp((int(asv)-int(max_score))/tau) for te, asv in tes.items()}
+        weight_sum = sum(weights.values())
+        weights = {k:v/weight_sum for k,v in weights.items()}
         align_weight[read] = weights
+        
     return align_weight
 
 
@@ -195,7 +198,7 @@ if __name__ == '__main__':
     for te in all_tes:
         uc = unique_counts.get(te,0)
         frac = em_frac.get(te,0)
-        if uc > 0 or frac > 5e-3:
+        if uc > 0 or frac > 2e-3:
             all_tes[te] += uc + int(em_counts.get(te,0))
 
     
