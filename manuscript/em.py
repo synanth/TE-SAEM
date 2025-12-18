@@ -26,7 +26,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weig
         xs.append(math.log(theta["_noise"]) + log_p_noise)
         m = max(xs)
         ll += m + math.log(sum(math.exp(x - m) for x in xs))
-    ll = ll/len(multimapped_reads)
+#    ll = ll/len(multimapped_reads)
     return ll
 
 
@@ -86,7 +86,7 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
 
 
 def em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores,gc):
-    threshold = 1e-6
+    threshold = 1e-3
     noise = "_noise"
     log_p_noise = -5.0
 
