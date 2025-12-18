@@ -5,7 +5,7 @@ import random
 ## sa ##
 def sa(old_abundance, temp):
     sa_abundance = old_abundance.copy()
-    n_neighbors = max(1, min(round(len(sa_abundance)*temp),50))
+    n_neighbors = max(1, min(round(len(sa_abundance)*temp),100))
     tes = list(sa_abundance.keys())
     vals = sa_abundance.values()
     mean_val = sum(vals)/len(tes)
@@ -26,15 +26,15 @@ def reduce_temp(temp, cooling_rate):
 
 
 def accept_sa(ll_old, ll_sa, temp, n):
-    accept = math.log(max(random.random(), 1e-16))
-    if ll_sa > ll_old:
+    delta_ll = ll_sa -ll_old
+    if abs(delta_ll) < 1e-6:
+        return False
+    if delta_ll > 0:
         print(">")
         return True
-    deltaE = (ll_sa -ll_old)/temp
-#    deltaE = (ll_sa-ll_old)/(temp*n)
-    print(deltaE, accept)
-    if accept < deltaE:
-        print(deltaE)
+    accept_rate = math.exp(delta_ll/temp)
+    if random.random() < accept_rate:
+        print(delta_ll, accept_rate)
         return True
     return False
 
