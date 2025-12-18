@@ -4,7 +4,7 @@ import random
 
 
 ## em ##
-def gc_weight(gc, gc_bias, l, gc_w=.02, min_w=0.5,max_w=2.0, l_w=10):
+def gc_weight(gc, gc_bias, l, gc_w=.01, min_w=0.5,max_w=2.0, l_w=25):
     g_bin = round(gc/gc_w) * gc_w
     l_bin = (l // l_w) / l_w
     if (g_bin, l_bin) in gc_bias:
@@ -18,7 +18,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weig
     for read, tes in multimapped_reads.items():
         xs = [
             math.log(theta[te] * gc_weights[read][te]) -
-            math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
+            math.log(max(len_transcripts[te] - read_lens[read] + 1, 20))
             for te in tes
         ]
         m = max(xs)
@@ -43,7 +43,7 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights):
     for read, tes in multimapped_reads.items():
         xs = []
         for te in tes:
-            e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
+            e_len = max(len_transcripts[te] - read_lens[read] + 1, 20)
             xs.append(math.log(theta[te] * gc_weights[read][te]) - math.log(e_len))
 
         m = max(xs)
@@ -91,7 +91,7 @@ def calc_gc_frac(seq):
     return (seq.count("g") + seq.count("G") + seq.count("c") + seq.count("C"))/len(seq)
 
 
-def calc_gc_bias(unique_counts, unique_seq, gc_w=0.02, len_w=10, pseudo=5):
+def calc_gc_bias(unique_counts, unique_seq, gc_w=0.01, len_w=25, pseudo=5):
     counts = {}
     total = 0
 
@@ -176,12 +176,9 @@ if __name__ == '__main__':
     em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights)
     non_zero = {k:int(v) for k,v in em_counts.items() if v > 3}
 
-    all_tes = {k:0 for k in len_transcripts}
-    for te in all_tes:
-        if te in unique_counts:
-            all_tes[te] = unique_counts[te]
-        if te in non_zero:
-            all_tes[te] += non_zero[te]
+    all_tes = {k:unique_counts.get(k,0) +non_zero.get(k,0) for k in len_transcripts}
+    
+
 
     out_loc = base_loc + "manuscript/out/saem_em.out"
     with open(out_loc, "w") as f:
