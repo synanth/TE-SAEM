@@ -43,7 +43,7 @@ def init_abundance(len_transcripts, multimapped_reads, all_tes):
 
 def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores, gc):
     frac = {k:{} for k in multimapped_reads}
-    log_p_noise = math.log(len(len_transcripts))
+    log_p_noise = -math.log(len(len_transcripts))
     for read, tes in multimapped_reads.items():
         xs = []
         max_score = max(align_scores[read].values())
@@ -69,7 +69,7 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
     theta = {k: 0 for k in all_tes}
     for k in all_tes:
         if k == "_noise":
-            theta[k] = 1.0
+            theta[k] = .1
         else:
             theta[k] = unique_counts.get(k, 0) + alpha
 #    theta = {k: unique_counts.get(k,0) + (alpha-1) for k in all_tes}
