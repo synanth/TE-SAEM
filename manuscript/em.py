@@ -8,11 +8,6 @@ def gc_weight(gc):
     return 1 + 2 * (.5 - gc)
 
 
-#def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens):
-#    log_sum = 0
-#    for read, tes in multimapped_reads.items():
-#        log_sum += math.log(max(sum([theta[te] / max(len_transcripts[te]-read_lens[read]+1,1) for te in tes]), 1e-300))
-#    return log_sum
 def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc):
     ll = 0.0
     for read, tes in multimapped_reads.items():
@@ -28,10 +23,9 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc):
 
 def init_abundance(len_transcripts, multimapped_reads, all_tes):
     theta = {k:0 for k in all_tes}
-
+    avg_len = 120
     for te in all_tes:
         theta[te] = random.random()
-#        theta[te] = (1/max(len_transcripts[te]-avg_len+1,1)+1e-12) 
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
     return theta
@@ -53,26 +47,6 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc):
             frac[read][te] = math.exp(x - m) / Z
 
     return frac
-
-
-#def e_step(theta, multimapped_reads, len_transcripts, read_lens):
-#    frac = {k:{} for k in multimapped_reads}
-#    for read, tes in multimapped_reads.items():
-#        frac_sum = 0
-#        for te in tes:
-#            e_len = max(len_transcripts[te]-read_lens[read]+1,1)
-#            frac[read][te] = (theta[te] / e_len) 
-#            if not math.isfinite(theta[te] / e_len):
-#                print("BAD VALUE", read, te, theta[te], e_len)
-#                sys.exit(1)
-#            frac_sum += theta[te] /e_len
-#        if frac_sum == 0:
-#            for te in tes:
-#                frac[read][te] = 1.0/len(tes)
-#            continue
-#        for te in tes:
-#            frac[read][te] /= frac_sum
-#    return frac
 
 
 def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts):
@@ -114,7 +88,6 @@ if __name__ == '__main__':
     gtf_loc = base_loc + "refs/hs1.gtf"
     unique_counts_loc = base_loc + "sim_data/star.unique.counts"
     multimapped_loc = base_loc + "sim_data/star.multi.translation"
-    #sam_loc = base_loc + "sim_data/alignment/segemehl.sam"
     sam_loc = base_loc + "sim_data/alignment/star.sam"
     assembly_loc = base_loc + "sim_data/assembly/to_contigs.sam"
 
@@ -163,9 +136,8 @@ if __name__ == '__main__':
             buff = line.strip().split(",")
             multimapped_reads[buff[0]] = buff[1:]
 
-#    print(sum(unique_counts.values()))
     em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts,gc)
-    non_zero = {k:int(v) for k,v in em_counts.items() if v > 2}
+    non_zero = {k:int(v) for k,v in em_counts.items() if v > 3}
 
     all_tes = {k:0 for k in len_transcripts}
     for te in all_tes:
