@@ -26,12 +26,12 @@ def reduce_temp(temp, cooling_rate):
 
 
 def accept_sa(ll_old, ll_sa, temp, n):
-    accept = max(random.random(), 1e-16)
+    accept = math.log(max(random.random(), 1e-16))
     if ll_sa > ll_old:
         print(">")
         return True
-    deltaE = (ll_sa -ll_old)/ll_old * temp
-    deltaE = math.exp((ll_sa-ll_old)/(temp*n))
+    deltaE = (ll_sa -ll_old)/temp
+#    deltaE = (ll_sa-ll_old)/(temp*n)
     print(deltaE, accept)
     if accept < deltaE:
         print(deltaE)
@@ -53,6 +53,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc):
         ]
         m = max(xs)
         ll += m + math.log(sum(math.exp(x - m) for x in xs))
+    ll = ll / len(multimapped_reads)
     return ll
 
 
@@ -99,7 +100,7 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes):
 
 def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, gc):
 
-    threshold = 0.01
+    threshold = 0.0001
     temp = 1.0
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
     old_abundance = init_abundance(len_transcripts, multimapped_reads, all_tes)
@@ -123,7 +124,6 @@ def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rat
             return {k:v*len(multimapped_reads) for k,v in new_abundance.items()}
         temp = reduce_temp(temp, cooling_rate)
         old_abundance = new_abundance
-    print(old_abundance)
     return {k:v*len(multimapped_reads) for k,v in new_abundance.items()}
 
 def gc_content(read):
