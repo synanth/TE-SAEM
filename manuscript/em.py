@@ -4,18 +4,20 @@ import random
 
 
 ## em ##
-def gc_weight(gc, gc_bias, bin_width=.01):
-    bin_idx = round(gc/bin_width) * bin_width
-    if bin_idx not in gc_bias:
-        bin_idx = min(gc_bias.keys(), key=lambda x: abs(x-bin_idx))
-    return gc_bias[bin_idx]
+def gc_weight(gc, gc_bias, l, gc_w=.02, min_w=0.5,max_w=2.0, l_w=10):
+    g_bin = round(gc/gc_w) * gc_w
+    l_bin = (l // l_w) / l_w
+    if (g_bin, l_bin) in gc_bias:
+        return(gc_bias[(g_bin, l_bin)])
+    bin_idx = min(gc_bias.keys(), key=lambda x: abs(x[0]-g_bin)+abs(x[0]-l_bin))
+    return max(min(gc_bias[bin_idx], max_w), min_w)
 
 
-def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc, bias):
+def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weights):
     ll = 0.0
     for read, tes in multimapped_reads.items():
         xs = [
-            math.log(theta[te] * gc_weight(gc[te], gc_bias)) -
+            math.log(theta[te] * gc_weights[read][te]) -
             math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
             for te in tes
         ]
@@ -35,14 +37,14 @@ def init_abundance(len_transcripts, multimapped_reads, all_tes):
     return theta
 
 
-def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc, gc_bias):
+def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights):
     frac = {k:{} for k in multimapped_reads}
 
     for read, tes in multimapped_reads.items():
         xs = []
         for te in tes:
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
-            xs.append(math.log(theta[te] * gc_weight(gc[te], gc_bias)) - math.log(e_len))
+            xs.append(math.log(theta[te] * gc_weights[read][te]) - math.log(e_len))
 
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
@@ -65,20 +67,21 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
     return theta
 
 
-def em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc,gc_bias):
+def em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights):
     threshold = 0.0001
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
     old_abundance = init_abundance(len_transcripts, multimapped_reads, all_tes)
-    ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, gc, gc_bias)
+    ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights)
 
     for i in range(1,10000):
-        frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, gc, gc_bias)
+        frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, gc_weights)
         new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts)
-        ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, gc, gc_bias)
+        ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights)
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
 
         if abs(diff) < threshold:
+
             return {k:v*len(multimapped_reads) for k,v in new_abundance.items()}
         old_abundance = new_abundance
         ll_old = ll_new
@@ -88,20 +91,25 @@ def calc_gc_frac(seq):
     return (seq.count("g") + seq.count("G") + seq.count("c") + seq.count("C"))/len(seq)
 
 
-def calc_gc_bias(unique_counts, unique_seq, bin_width=0.01):
-    gc_bin_counts = {}
+def calc_gc_bias(unique_counts, unique_seq, gc_w=0.02, len_w=10, pseudo=5):
+    counts = {}
+    total = 0
 
     for read, seq in unique_seq.items():
         gc_frac = calc_gc_frac(seq)
-        bin_idx = round(gc_frac/bin_width) * bin_width
-        if bin_idx not in gc_bin_counts:
-            gc_bin_counts[bin_idx] = 1
-        else:
-            gc_bin_counts[bin_idx] += 1
+        g = round(gc_frac/gc_w)*gc_w
+        l = (len(seq)//len_w) * len_w
+        counts[(g,l)] = counts.get((g,l),0)+1
+        total += 1
+    g_set = set(k[0] for k in counts.keys())        
+    l_set = set(k[0] for k in counts.keys())        
+    for g in g_set:
+        for l in l_set:
+            counts[(g,l)] = counts.get((g,l), 0) + pseudo
 
-    mean_count = sum(gc_bin_counts.values()) / len(gc_bin_counts)
-    gc_bias = {k:v/mean_count for k,v in gc_bin_counts.items()}
+    gc_bias = {k:v/total for k,v in counts.items()}
     return gc_bias
+
 
 
 ## driver fxn ##
@@ -128,7 +136,7 @@ if __name__ == '__main__':
                 continue
             buff = line.strip().split()
             name = buff[0].split("/")[0]
-            read_lens[name] = int(buff[8])
+            read_lens[name] = len(buff[9])
             if buff[-4] == "NH:i:1":
                 unique_seq[name] = buff[9]
     
@@ -146,7 +154,7 @@ if __name__ == '__main__':
         for line in lines:
             buff = line.strip().split()
             name = buff[11][1:-2] 
-            len_transcripts[name] = abs(int(buff[4]) - int(buff[3]))
+            len_transcripts[name] = len(buff[9])
             gc[name] = float(buff[-1][1:-2])
 
     with open(unique_counts_loc, "r") as f:
@@ -163,8 +171,9 @@ if __name__ == '__main__':
 
 
     gc_bias = calc_gc_bias(unique_counts, unique_seq)
+    gc_weights = {read:{te:gc_weight(gc[te], gc_bias, read_lens[read]) for te in tes} for read,tes in multimapped_reads.items()}
 
-    em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts,gc, gc_bias)
+    em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights)
     non_zero = {k:int(v) for k,v in em_counts.items() if v > 3}
 
     all_tes = {k:0 for k in len_transcripts}
