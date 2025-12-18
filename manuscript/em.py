@@ -51,12 +51,12 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, ali
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
             xs.append(math.log(theta[te]) + (align_scores[read][te]-max_score)/tau + gc_weights[read] + gc[te] - math.log(e_len))
 
+        xs.append(math.log(theta["_noise"]) + -5)
+        tes_plus = tes + ["_noise"]
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
 
-        xs.append(math.log(theta["_noise"]) + -5)
-        tes += ["_noise"]
-        for te, x in zip(tes, xs):
+        for te, x in zip(tes_plus, xs):
             frac[read][te] = math.exp(x - m) / Z
 
     return frac
@@ -71,6 +71,7 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
     for read, tes in multimapped_reads.items():
         for te in tes:
             theta[te] += frac[read][te]
+        theta["_noise"] += frac[read]["_noise"]
 
     theta = {k:max(v, 1e-12) for k,v in theta.items()}
     theta_sum = sum(theta.values())
