@@ -16,7 +16,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weig
     ll = 0.0
     for read, tes in multimapped_reads.items():
         xs = [
-            math.log(theta[te]) + math.log(align_scores[read][te]) + gc_weights[te] -
+            math.log(theta[te]) + math.log(align_scores[read][te]) + gc_weights[read] -
             math.log(max(len_transcripts[te] - read_lens[read] + 1, 20))
             for te in tes
         ]
@@ -43,7 +43,7 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, ali
         xs = []
         for te in tes:
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 20)
-            xs.append(math.log(theta[te]) + math.log(align_scores[read][te]) + gc_weights[te] - math.log(e_len))
+            xs.append(math.log(theta[te]) + math.log(align_scores[read][te]) + gc_weights[read] - math.log(e_len))
 
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
@@ -133,6 +133,7 @@ if __name__ == '__main__':
     len_transcripts = {}
     unique_counts = {}
     unique_seq = {}
+    multi_seq = {}
     multimapped_reads = {}
     align_scores = {}
     read_lens = {}
@@ -149,6 +150,9 @@ if __name__ == '__main__':
             read_lens[name] = len(buff[9])
             if buff[-4] == "NH:i:1":
                 unique_seq[name] = buff[9]
+                multi_seq[name] = buff[9]
+            else:
+                multi_seq[name] = buff[9]
     
     with open(assembly_loc, "r") as f:
         lines = f.readlines()
@@ -182,9 +186,11 @@ if __name__ == '__main__':
             te_scores = [x.split("/")[0] for x in buff[1:]]
             multimapped_reads[read] = te_names
             align_scores[read] = {te:te_scores[e] for e, te in enumerate(te_names)}
+
+
     align_scores = norm_align_scores(align_scores)
     gc_bias = calc_gc_bias(unique_seq)
-    gc_weights = {te:math.log(gc_weight(gc[te], gc_bias)) for te in len_transcripts}
+    gc_weights = {read:math.log(gc_weight(calc_gc_frac(multi_seq[read]), gc_bias)) for read in multi_seq}
 
     em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores)
     total_em = sum(em_counts.values())
