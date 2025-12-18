@@ -4,12 +4,11 @@ import random
 
 
 ## em ##
-def gc_weight(gc, gc_bias, l, gc_w=.01, min_w=0.5,max_w=2.0, l_w=25):
+def gc_weight(gc, gc_bias, gc_w=.01, min_w=0.5,max_w=2.0):
     g_bin = round(gc/gc_w) * gc_w
-    l_bin = (l // l_w) / l_w
-    if (g_bin, l_bin) in gc_bias:
-        return(gc_bias[(g_bin, l_bin)])
-    bin_idx = min(gc_bias.keys(), key=lambda x: abs(x[0]-g_bin)+abs(x[0]-l_bin))
+    if g_bin in gc_bias:
+        return gc_bias[g_bin]
+    bin_idx = min(gc_bias.keys(), key=lambda x: abs(x-g_bin))
     return max(min(gc_bias[bin_idx], max_w), min_w)
 
 
@@ -17,7 +16,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weig
     ll = 0.0
     for read, tes in multimapped_reads.items():
         xs = [
-            math.log(theta[te]) + math.log(align_scores[read][te]) + gc_weights[read][te] -
+            math.log(theta[te]) + math.log(align_scores[read][te]) - #+ gc_weights[te] -
             math.log(max(len_transcripts[te] - read_lens[read] + 1, 20))
             for te in tes
         ]
@@ -44,7 +43,7 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, ali
         xs = []
         for te in tes:
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 20)
-            xs.append(math.log(theta[te]) + math.log(align_scores[read][te]) + gc_weights[read][te] - math.log(e_len))
+            xs.append(math.log(theta[te]) + math.log(align_scores[read][te]) -math.log(e_len)) #+ gc_weights[te] - math.log(e_len))
 
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
@@ -68,7 +67,7 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
 
 
 def em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores):
-    threshold = 0.000001
+    threshold = 1e-6
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
     old_abundance = init_abundance(len_transcripts, multimapped_reads, all_tes)
     ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores)
@@ -91,24 +90,18 @@ def calc_gc_frac(seq):
     return (seq.count("g") + seq.count("G") + seq.count("c") + seq.count("C"))/len(seq)
 
 
-def calc_gc_bias(unique_counts, unique_seq, gc_w=0.01, len_w=25, pseudo=5):
+def calc_gc_bias(unique_seq, gc_bin_size=0.01, pseudo_count=5):
     counts = {}
-    total = 0
 
-    for read, seq in unique_seq.items():
+    for seq in unique_seq.values():
         gc_frac = calc_gc_frac(seq)
-        g = round(gc_frac/gc_w)*gc_w
-        l = (len(seq)//len_w) * len_w
-        counts[(g,l)] = counts.get((g,l),0)+1
-        total += 1
-    g_set = set(k[0] for k in counts.keys())        
-    l_set = set(k[0] for k in counts.keys())        
-    for g in g_set:
-        for l in l_set:
-            counts[(g,l)] = counts.get((g,l), 0) + pseudo
+        g = round(gc_frac/gc_bin_size) * gc_bin_size
+        counts[g] = counts.get(g,0) + 1
+    for g in counts:
+        counts[g] += pseudo_count
+    counts_mean = sum(counts.values())/len(counts)
 
-    gc_bias = {k:v/total for k,v in counts.items()}
-    return gc_bias
+    return {k:v/counts_mean for k,v in counts.items()}
 
 
 def norm_align_scores(align_scores, tau=5.0):
@@ -187,8 +180,9 @@ if __name__ == '__main__':
             align_scores[read] = {te:te_scores[e] for e, te in enumerate(te_names)}
 
     align_scores = norm_align_scores(align_scores)
-    gc_bias = calc_gc_bias(unique_counts, unique_seq)
-    gc_weights = {read:{te:math.log(gc_weight(gc[te], gc_bias, read_lens[read])) for te in tes} for read,tes in multimapped_reads.items()}
+    gc_bias = calc_gc_bias(unique_seq)
+    gc_weights = {te:math.log(gc_weight(gc[te], gc_bias)) for te in len_transcripts}
+    gc_weights = {}
 
     em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores)
     total_em = sum(em_counts.values())
@@ -198,7 +192,7 @@ if __name__ == '__main__':
     for te in all_tes:
         uc = unique_counts.get(te,0)
         frac = em_frac.get(te,0)
-        if uc > 0 or frac > 2e-3:
+        if uc > 0 or frac > 5e-4:
             all_tes[te] += uc + int(em_counts.get(te,0))
 
     
