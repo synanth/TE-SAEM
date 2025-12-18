@@ -40,14 +40,19 @@ def accept_sa(ll_old, ll_sa, temp, n):
 
 
 ## em ##
-def gc_weight(gc_bias):
-    return 1 + 2*(.5-gc_bias)
+def gc_weight(gc, gc_bias, gc_w=0.1, min_w=0.5,max_w=2.0):
+    g_bin = round(gc/gc_w) * gc_w
 
-def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc):
+    if g_bin in gc_bias:
+        return gc_bias[g_bin]
+    bin_idx = min(gc_bias.keys(), key=lambda x: abs(x-g_bin))
+    return max(min(gc_bias[bin_idx], max_w), min_w)
+
+def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores):
     ll = 0.0
     for read, tes in multimapped_reads.items():
         xs = [
-            math.log(theta[te] * gc_weight(gc[te])) -
+            math.log(theta[te] * gc_weights[te] * align_scores[read][te]) -
             math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
             for te in tes
         ]
@@ -62,20 +67,19 @@ def init_abundance(len_transcripts, multimapped_reads, all_tes):
 
     for te in all_tes:
         theta[te] = max(random.random(), 1e-300)
-#        theta[te] = (1/max(len_transcripts[te]-avg_len+1,1)+1e-12) 
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
     return theta
 
 
-def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc):
+def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores):
     frac = {k:{} for k in multimapped_reads}
 
     for read, tes in multimapped_reads.items():
         xs = []
         for te in tes:
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
-            xs.append(math.log(theta[te] * gc_weight(gc[te])) - math.log(e_len))
+            xs.append(math.log(theta[te] * gc_weights[te]* align_scores[read][te]) - math.log(e_len))
 
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
@@ -98,9 +102,9 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes):
     return theta
 
 
-def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, gc):
+def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores):
 
-    threshold = 0.0001
+    threshold = 1e-6
     temp = 1.0
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
     old_abundance = init_abundance(len_transcripts, multimapped_reads, all_tes)
@@ -108,16 +112,16 @@ def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rat
     #for i in range(1,10000):
     for i in range(1,5000):
         sa_abundance = sa(old_abundance, temp)
-        ll_sa = log_likelihood(sa_abundance, len_transcripts, multimapped_reads, read_lens, gc)
-        ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, gc)
+        ll_sa = log_likelihood(sa_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores)
+        ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores)
         if accept_sa(ll_old, ll_sa, temp, len(multimapped_reads)):
             print(i, ll_old, ll_sa, temp)
             old_abundance = sa_abundance
             temp = reduce_temp(temp, cooling_rate)
             continue
-        frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, gc)
+        frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores)
         new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes)
-        ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, gc)
+        ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores)
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
         if abs(diff) < threshold:
@@ -126,8 +130,33 @@ def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rat
         old_abundance = new_abundance
     return {k:v*len(multimapped_reads) for k,v in new_abundance.items()}
 
+
 def gc_content(read):
     return (read.count("G") + read.count("C"))/max(1, len(read))
+
+
+def calc_gc_bias(unique_seq, gc_bin_size=0.01, pseudo_count=5):
+    counts = {}
+
+    for seq in unique_seq.values():
+        gc_frac = gc_content(seq)
+        g = round(gc_frac/gc_bin_size) * gc_bin_size
+        counts[g] = counts.get(g,0) + 1
+    for g in counts:
+        counts[g] += pseudo_count
+    counts_mean = sum(counts.values())/len(counts)
+    return {k:v/counts_mean for k,v in counts.items()}
+
+
+def norm_align_scores(align_scores, tau=0.5):
+    align_weight = {}
+    for read, tes in align_scores.items():
+        max_score = max(tes.values())
+        weights = {te: math.exp((int(asv) - int(max_score))/tau) for te, asv in tes.items()}
+        weight_sum = sum(weights.values())
+        weights = {k:v/weight_sum for k,v in weights.items()}
+        align_weight[read] = weights
+    return align_weight
 
 
 ## driver fxn ##
@@ -145,7 +174,9 @@ if __name__ == '__main__':
 
     len_transcripts = {}
     unique_counts = {}
+    unique_seq = {}
     multimapped_reads = {}
+    align_scores = {}
     read_lens = {}
     gc = {}
 
@@ -167,7 +198,11 @@ if __name__ == '__main__':
         lines = f.readlines()
         for line in lines:
             buff = line.strip().split(",")
-            multimapped_reads[buff[0]] = buff[1:]
+            name = buff[0]
+            tes = [x.split("/")[1] for x in buff[1:]]
+            scores = [x.split("/")[0] for x in buff[1:]]
+            multimapped_reads[name] = tes
+            align_scores[name] = {te:scores[e] for e, te in enumerate(tes)}
     
     with open(sam_loc, "r") as f:
         lines = f.readlines()
@@ -177,6 +212,8 @@ if __name__ == '__main__':
             buff = line.strip().split()
             name = buff[0].split("/")[0]
             read_lens[name] = len(buff[9])
+            if buff[-4] == "NH:i:1":
+                unique_seq[name] = buff[9]
 
     with open(assembly_loc, "r") as f:
         lines = f.readlines()
@@ -186,9 +223,13 @@ if __name__ == '__main__':
             buff = line.strip().split()
             name = buff[0].split("/")[0]
             read_lens[name] = len(buff[9])
-    
 
-    em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, gc)
+    align_scores = norm_align_scores(align_scores)
+    
+    gc_bias = calc_gc_bias(unique_seq)
+    gc_weights = {te:gc_weight(gc[te], gc_bias) for te in len_transcripts}
+
+    em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores)
     non_zero = {k:round(v) for k,v in em_counts.items() if v > 3}
 
     all_tes = {k:0 for k in len_transcripts}
