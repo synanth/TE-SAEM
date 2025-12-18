@@ -15,8 +15,10 @@ def gc_weight(gc, gc_bias, gc_w=.01, min_w=0.5,max_w=2.0):
 def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores):
     ll = 0.0
     for read, tes in multimapped_reads.items():
+        max_score = max(align_scores[read].values())
+        tau = .5
         xs = [
-            math.log(theta[te]) + math.log(align_scores[read][te]) + gc_weights[read] -
+            math.log(theta[te]) + (align_scores[read][te] - max_score)/tau + gc_weights[read] -
             math.log(max(len_transcripts[te] - read_lens[read] + 1, 20))
             for te in tes
         ]
@@ -185,10 +187,10 @@ if __name__ == '__main__':
             te_names = [x.split("/")[1] for x in buff[1:]]
             te_scores = [x.split("/")[0] for x in buff[1:]]
             multimapped_reads[read] = te_names
-            align_scores[read] = {te:te_scores[e] for e, te in enumerate(te_names)}
+            align_scores[read] = {te:float(te_scores[e]) for e, te in enumerate(te_names)}
 
 
-    align_scores = norm_align_scores(align_scores)
+#    align_scores = norm_align_scores(align_scores)
     gc_bias = calc_gc_bias(unique_seq)
     gc_weights = {read:math.log(gc_weight(calc_gc_frac(multi_seq[read]), gc_bias)) for read in multi_seq}
 
