@@ -16,7 +16,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weig
     ll = 0.0
     for read, tes in multimapped_reads.items():
         xs = [
-            math.log(theta[te]) + math.log(align_scores[read][te]) - #+ gc_weights[te] -
+            math.log(theta[te]) + math.log(align_scores[read][te]) + gc_weights[te] -
             math.log(max(len_transcripts[te] - read_lens[read] + 1, 20))
             for te in tes
         ]
@@ -43,7 +43,7 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, ali
         xs = []
         for te in tes:
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 20)
-            xs.append(math.log(theta[te]) + math.log(align_scores[read][te]) -math.log(e_len)) #+ gc_weights[te] - math.log(e_len))
+            xs.append(math.log(theta[te]) + math.log(align_scores[read][te]) + gc_weights[te] - math.log(e_len))
 
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
@@ -104,7 +104,7 @@ def calc_gc_bias(unique_seq, gc_bin_size=0.01, pseudo_count=5):
     return {k:v/counts_mean for k,v in counts.items()}
 
 
-def norm_align_scores(align_scores, tau=5.0):
+def norm_align_scores(align_scores, tau=.5):
     align_weight = {}
 
     for read, tes in align_scores.items():
@@ -182,7 +182,6 @@ if __name__ == '__main__':
     align_scores = norm_align_scores(align_scores)
     gc_bias = calc_gc_bias(unique_seq)
     gc_weights = {te:math.log(gc_weight(gc[te], gc_bias)) for te in len_transcripts}
-    gc_weights = {}
 
     em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores)
     total_em = sum(em_counts.values())
