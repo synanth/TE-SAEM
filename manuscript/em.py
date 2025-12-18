@@ -55,11 +55,15 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, ali
 
 
 def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts):
-    theta = {k: 0 for k in all_tes}
+    alpha = .3
+    eps = 1e-12
+#    theta = {k: 0 for k in all_tes}
+    theta = {k: unique_counts.get(k,0) + (alpha-1) for k in all_tes}
 
     for read, tes in multimapped_reads.items():
         for te in tes:
             theta[te] += frac[read][te]
+
     theta = {k:max(v, 1e-12) for k,v in theta.items()}
     theta_sum = sum(theta.values())
     theta = {k:v/theta_sum for k,v in theta.items()}
@@ -162,13 +166,13 @@ if __name__ == '__main__':
             name = buff[11][1:-2] 
             len_transcripts[name] = len(buff[9])
             gc[name] = float(buff[-1][1:-2])
-
+    
     with open(unique_counts_loc, "r") as f:
         lines = f.readlines()
         for line in lines:
             buff = line.strip().split(",")
             unique_counts[buff[0]] = int(buff[1])
-
+    
     with open(multimapped_loc, "r") as f:
         lines = f.readlines()
         for line in lines:
@@ -178,7 +182,6 @@ if __name__ == '__main__':
             te_scores = [x.split("/")[0] for x in buff[1:]]
             multimapped_reads[read] = te_names
             align_scores[read] = {te:te_scores[e] for e, te in enumerate(te_names)}
-
     align_scores = norm_align_scores(align_scores)
     gc_bias = calc_gc_bias(unique_seq)
     gc_weights = {te:math.log(gc_weight(gc[te], gc_bias)) for te in len_transcripts}
@@ -191,7 +194,7 @@ if __name__ == '__main__':
     for te in all_tes:
         uc = unique_counts.get(te,0)
         frac = em_frac.get(te,0)
-        if uc > 0 or frac > 5e-4:
+        if uc > 0 or frac > 1e-4:
             all_tes[te] += uc + int(em_counts.get(te,0))
 
     
