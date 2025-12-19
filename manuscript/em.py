@@ -43,9 +43,7 @@ def e_step(theta, multimapped_reads, align_scores, e_lens):
 
 
 def m_step(frac, multimapped_reads, all_tes, unique_counts):
-    alpha = .3
-    eps = 1e-12
-    theta = {k: unique_counts.get(k,0) + (alpha-1) for k in all_tes}
+    theta = {k: 0 for k in all_tes}
 
     for read, tes in multimapped_reads.items():
         for te in tes:
@@ -80,17 +78,6 @@ def em(e_lens, multimapped_reads, unique_counts, align_scores):
     return {k:v*len(multimapped_reads) for k,v in new_abundance.items()}
 
 
-def norm_align_scores(align_scores, tau=.5):
-    align_weight = {}
-
-    for read, tes in align_scores.items():
-        max_score = max(tes.values())
-        weights = {te: math.exp((int(asv)-int(max_score))/tau) for te, asv in tes.items()}
-        weight_sum = sum(weights.values())
-        weights = {k:v/weight_sum for k,v in weights.items()}
-        align_weight[read] = weights
-        
-    return align_weight
 
 
 def calc_e_lens(len_transcripts, read_lens):
@@ -166,7 +153,6 @@ if __name__ == '__main__':
         multimapped_reads.pop(key, None)
 
 
-    align_scores = norm_align_scores(align_scores)
     e_lens = calc_e_lens(len_transcripts, read_lens)
 
     em_counts = em(e_lens, multimapped_reads, unique_counts, align_scores)
