@@ -19,7 +19,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weig
         max_score = max(align_scores[read].values())
         tau = 2.0
         xs = [
-            math.log(theta[te]) + (align_scores[read][te] - max_score)/tau + gc[te] -
+            math.log(theta[te]) + (align_scores[read][te] - max_score)/tau + gc[te] + gc_weights[read] -
             math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
             for te in tes
         ]
@@ -50,7 +50,8 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, ali
         tau = 2.0
         for te in tes:
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
-            xs.append(math.log(theta[te]) + (align_scores[read][te]-max_score)/tau + gc[te] - math.log(e_len))
+            xs.append(math.log(theta[te]) + (align_scores[read][te]-max_score)/tau + 
+            gc_weights[read] + gc[te] - math.log(e_len))
 
         xs.append(math.log(theta["_noise"]) + log_p_noise)
         tes_plus = tes + ["_noise"]
@@ -69,7 +70,7 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
     theta = {k: 0 for k in all_tes}
     for k in all_tes:
         if k == "_noise":
-            theta[k] = .1
+            theta[k] = 1/len(all_tes)
         else:
             theta[k] = unique_counts.get(k, 0) + alpha
 #    theta = {k: unique_counts.get(k,0) + (alpha-1) for k in all_tes}
