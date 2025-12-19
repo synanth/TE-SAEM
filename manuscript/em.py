@@ -40,8 +40,8 @@ def e_step(theta, multimapped_reads, align_scores, e_lens, beta = 1.0):
     return frac
 
 
-def m_step(frac, multimapped_reads, all_tes, unique_counts, alpha = 1.1):
-    theta = {k: (alpha-1) for k in all_tes}
+def m_step(frac, multimapped_reads, all_tes, unique_counts, alpha = 1.5):
+    theta = {k: unique_counts.get(k, 0) + (alpha-1) for k in all_tes}
 
     for read, tes in multimapped_reads.items():
         for te in tes:
@@ -54,9 +54,9 @@ def m_step(frac, multimapped_reads, all_tes, unique_counts, alpha = 1.1):
 
 
 def em(e_lens, multimapped_reads, unique_counts, align_scores):
-    threshold = 1e-4
+    threshold = 1e-6
 
-    all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
+    all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist] + list(unique_counts.keys())))
 
     old_abundance = init_abundance(multimapped_reads, all_tes)
     ll_old = log_likelihood(old_abundance, multimapped_reads, align_scores, e_lens)
@@ -164,11 +164,11 @@ if __name__ == '__main__':
     total_em = sum(em_counts.values())
     em_frac = {k:v/total_em for k,v in em_counts.items()}
     all_tes = {k:0 for k in len_transcripts}
-
+    
     for te in all_tes:
         uc = unique_counts.get(te,0)
         frac = em_frac.get(te,0)
-        if uc > 0 or frac > 5e-4:
+        if uc > 0 or frac > 1e-5:
             all_tes[te] += uc + int(em_counts.get(te,0))
 
 
