@@ -12,21 +12,18 @@ def gc_weight(gc, gc_bias, gc_w=.01, min_w=0.5,max_w=2.0):
     return max(min(gc_bias[bin_idx], max_w), min_w)
 
 
-def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores, gc):
+def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores):
     ll = 0.0
-    log_p_noise = -math.log(len(len_transcripts))
+    log_p_noise = -math.log(sum(len_transcripts.values())/sum(read_lens.values()))
     for read, tes in multimapped_reads.items():
-        max_score = max(align_scores[read].values())
-        tau = 2.0
         xs = [
-            math.log(theta[te]) + (align_scores[read][te] - max_score)/tau + gc[te] + gc_weights[read] -
+            math.log(theta[te]) + math.log(align_scores[read][te]) -
             math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
             for te in tes
         ]
         xs.append(math.log(theta["_noise"]) + log_p_noise)
         m = max(xs)
         ll += m + math.log(sum(math.exp(x - m) for x in xs))
-#    ll = ll/len(multimapped_reads)
     return ll
 
 
@@ -41,17 +38,14 @@ def init_abundance(len_transcripts, multimapped_reads, all_tes):
     return theta
 
 
-def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores, gc):
+def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores):
     frac = {k:{} for k in multimapped_reads}
     log_p_noise = -math.log(len(len_transcripts))
     for read, tes in multimapped_reads.items():
         xs = []
-        max_score = max(align_scores[read].values())
-        tau = 2.0
         for te in tes:
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
-            xs.append(math.log(theta[te]) + (align_scores[read][te]-max_score)/tau + 
-            gc_weights[read] + gc[te] - math.log(e_len))
+            xs.append(math.log(theta[te]) + math.log(align_scores[read][te]) - math.log(e_len))
 
         xs.append(math.log(theta["_noise"]) + log_p_noise)
         tes_plus = tes + ["_noise"]
@@ -86,7 +80,7 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
     return theta
 
 
-def em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores,gc):
+def em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores):
     threshold = 1e-3
     noise = "_noise"
     log_p_noise = -5.0
@@ -95,12 +89,12 @@ def em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights,
     all_tes.append(noise)
 
     old_abundance = init_abundance(len_transcripts, multimapped_reads, all_tes)
-    ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores, gc)
+    ll_old = log_likelihood(old_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores)
 
     for i in range(1,10000):
-        frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores, gc)
+        frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores)
         new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts)
-        ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores, gc)
+        ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores)
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
 
@@ -160,6 +154,8 @@ if __name__ == '__main__':
     read_lens = {}
     e_lens = {}
     gc = {}
+    exclude = []
+
 
     with open(sam_loc, "r") as f:
         lines = f.readlines()
@@ -174,7 +170,11 @@ if __name__ == '__main__':
                 multi_seq[name] = buff[9]
             else:
                 multi_seq[name] = buff[9]
-    
+                if int(buff[-4].split(":")[-1]) > 20:
+                    exclude += [name]
+                    continue
+
+
     with open(assembly_loc, "r") as f:
         lines = f.readlines()
         for line in lines:
@@ -208,12 +208,15 @@ if __name__ == '__main__':
             multimapped_reads[read] = te_names
             align_scores[read] = {te:float(te_scores[e]) for e, te in enumerate(te_names)}
 
+    for key in exclude:
+        multimapped_reads.pop(key, None)
 
     gc_bias = calc_gc_bias(unique_seq)
     gc_weights = {read:math.log(gc_weight(calc_gc_frac(multi_seq[read]), gc_bias)) for read in multi_seq}
     gc = {k:math.log(gc_weight(v,gc_bias)) for k,v in gc.items()}
+    align_scores = norm_align_scores(align_scores)
 
-    em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores, gc)
+    em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores)
     print(em_counts["_noise"])
     if "_noise" in em_counts:
         del em_counts["_noise"]
