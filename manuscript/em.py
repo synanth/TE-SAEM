@@ -54,7 +54,7 @@ def m_step(frac, multimapped_reads, all_tes, unique_counts):
 
 
 def em(e_lens, multimapped_reads, unique_counts, align_scores):
-    threshold = 1e-3
+    threshold = 1e-2
 
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
 
@@ -78,7 +78,7 @@ def em(e_lens, multimapped_reads, unique_counts, align_scores):
 
 
 
-def calc_e_lens(len_transcripts, read_lens):
+def calc_e_lens(len_transcripts, read_lens, multimapped_reads):
     e_lens = {}
     for read,tes in multimapped_reads.items():
         e_lens[read] = {}
@@ -151,7 +151,7 @@ if __name__ == '__main__':
         multimapped_reads.pop(key, None)
 
 
-    e_lens = calc_e_lens(len_transcripts, read_lens)
+    e_lens = calc_e_lens(len_transcripts, read_lens, multimapped_reads)
 
     em_counts = em(e_lens, multimapped_reads, unique_counts, align_scores)
     total_em = sum(em_counts.values())
