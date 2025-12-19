@@ -40,8 +40,8 @@ def e_step(theta, multimapped_reads, align_scores, e_lens, beta = 1.0):
     return frac
 
 
-def m_step(frac, multimapped_reads, all_tes, unique_counts):
-    theta = {k: 0 for k in all_tes}
+def m_step(frac, multimapped_reads, all_tes, unique_counts, alpha = 0.3):
+    theta = {k: unique_counts.get(k,0) + (alpha-1) for k in all_tes}
 
     for read, tes in multimapped_reads.items():
         for te in tes:
@@ -54,7 +54,7 @@ def m_step(frac, multimapped_reads, all_tes, unique_counts):
 
 
 def em(e_lens, multimapped_reads, unique_counts, align_scores):
-    threshold = 1e-2
+    threshold = 1e-4
 
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
 
@@ -68,7 +68,7 @@ def em(e_lens, multimapped_reads, unique_counts, align_scores):
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
 
-        if abs(diff) < threshold:
+        if abs(diff)/len(multimapped_reads) < threshold:
             return {k:v*len(multimapped_reads) for k,v in new_abundance.items()}
 
         old_abundance = new_abundance
