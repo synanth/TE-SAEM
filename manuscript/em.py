@@ -4,19 +4,6 @@ import random
 
 
 ## em ##
-def log_likelihood(theta, multimapped_reads, align_scores, e_lens):
-    ll = 0.0
-    for read, tes in multimapped_reads.items():
-        xs = [
-            math.log(theta[te]) + math.log(align_scores[read][te]) -
-            math.log(e_lens[read][te])
-            for te in tes
-        ]
-        m = max(xs)
-        ll += m + math.log(sum(math.exp(x - m) for x in xs))
-    return ll
-
-
 def init_abundance(multimapped_reads, all_tes):
     theta = {k:0 for k in all_tes}
     for te in all_tes:
@@ -26,12 +13,23 @@ def init_abundance(multimapped_reads, all_tes):
     return theta
 
 
-def e_step(theta, multimapped_reads, align_scores, e_lens):
+def log_likelihood(theta, multimapped_reads, align_scores, e_lens, beta=1.0):
+    ll = 0.0
+    for read, tes in multimapped_reads.items():
+        xs = []
+        for te in tes:
+            xs.append(math.log(theta[te]) + beta * align_scores[read][te] -  math.log(e_lens[read][te]))
+        m = max(xs)
+        ll += m + math.log(sum(math.exp(x - m) for x in xs))
+    return ll
+
+
+def e_step(theta, multimapped_reads, align_scores, e_lens, beta = 1.0):
     frac = {k:{} for k in multimapped_reads}
     for read, tes in multimapped_reads.items():
         xs = []
         for te in tes:
-            xs.append(math.log(theta[te]) + math.log(align_scores[read][te]) - math.log(e_lens[read][te]))
+            xs.append(math.log(theta[te]) + beta * align_scores[read][te] - math.log(e_lens[read][te]))
 
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
