@@ -41,7 +41,7 @@ def e_step(theta, multimapped_reads, align_scores, e_lens, beta = 1.0):
 
 
 def m_step(frac, multimapped_reads, all_tes, unique_counts, alpha = 0.3):
-    theta = {k: unique_counts.get(k,0) + (alpha-1) for k in all_tes}
+    theta = {k: (alpha-1) for k in all_tes}
 
     for read, tes in multimapped_reads.items():
         for te in tes:
@@ -85,6 +85,12 @@ def calc_e_lens(len_transcripts, read_lens, multimapped_reads):
         for te in tes:
             e_lens[read][te] = max(len_transcripts[te] - read_lens[read] + 1,1)
     return e_lens
+
+def norm_align_scores(align_scores):
+    for read, tes in align_scores.items():
+        m = max(tes.values())
+        align_scores[read] = {k:v/m for k,v in tes.items()}
+    return align_scores
 
 
 ## driver fxn ##
@@ -152,6 +158,7 @@ if __name__ == '__main__':
 
 
     e_lens = calc_e_lens(len_transcripts, read_lens, multimapped_reads)
+    align_scores = norm_align_scores(align_scores)
 
     em_counts = em(e_lens, multimapped_reads, unique_counts, align_scores)
     total_em = sum(em_counts.values())
