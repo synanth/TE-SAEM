@@ -40,7 +40,7 @@ def e_step(theta, multimapped_reads, align_scores, e_lens, beta = 1.0):
     return frac
 
 
-def m_step(frac, multimapped_reads, all_tes, unique_counts, alpha = 0.3):
+def m_step(frac, multimapped_reads, all_tes, unique_counts, alpha = 1.1):
     theta = {k: (alpha-1) for k in all_tes}
 
     for read, tes in multimapped_reads.items():
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     for te in all_tes:
         uc = unique_counts.get(te,0)
         frac = em_frac.get(te,0)
-        if uc > 0 or frac > 5e-5:
+        if uc > 0 or frac > 5e-4:
             all_tes[te] += uc + int(em_counts.get(te,0))
 
 
