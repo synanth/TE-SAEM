@@ -32,6 +32,7 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weig
 def init_abundance(len_transcripts, multimapped_reads, all_tes):
     theta = {k:0 for k in all_tes}
     avg_len = 120
+    random.seed(1)
     for te in all_tes:
         theta[te] = random.random()
     theta["_noise"] = 0.05
@@ -207,6 +208,7 @@ if __name__ == '__main__':
     gc = {k:math.log(gc_weight(v,gc_bias)) for k,v in gc.items()}
 
     em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, gc_weights, align_scores, gc)
+    print(em_counts["_noise"])
     if "_noise" in em_counts:
         del em_counts["_noise"]
     total_em = sum(em_counts.values())
