@@ -27,11 +27,11 @@ def reduce_temp(temp, cooling_rate):
 
 def accept_sa(ll_old, ll_sa, temp, n):
     delta_ll = ll_sa -ll_old
-    if abs(delta_ll) < 1e-6:
-        return False
     if delta_ll > 0:
         print(">")
         return True
+    if abs(delta_ll) < 1e-6:
+        return False
     accept_rate = math.exp(delta_ll/temp)
     if random.random() < accept_rate:
         print(delta_ll, accept_rate)
@@ -52,8 +52,10 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weig
     ll = 0.0
     for read, tes in multimapped_reads.items():
         xs = [
-            math.log(theta[te] * gc_weights[te] * align_scores[read][te]) -
-            math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
+            math.log(theta[te] 
+            * align_scores[read][te]) 
+#            math.log(theta[te] * gc_weights[te] * align_scores[read][te]) -
+            - math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
             for te in tes
         ]
         m = max(xs)
@@ -66,7 +68,7 @@ def init_abundance(len_transcripts, multimapped_reads, all_tes):
     theta = {k:0 for k in all_tes}
 
     for te in all_tes:
-        theta[te] = max(random.random(), 1e-300)
+        theta[te] = 1/len(all_tes)
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
     return theta
@@ -79,7 +81,8 @@ def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, ali
         xs = []
         for te in tes:
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
-            xs.append(math.log(theta[te] * gc_weights[te]* align_scores[read][te]) - math.log(e_len))
+            xs.append(math.log(theta[te] * align_scores[read][te]) - math.log(e_len))
+#            xs.append(math.log(theta[te] * gc_weights[te]* align_scores[read][te]) - math.log(e_len))
 
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
@@ -101,6 +104,15 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes):
     theta = {k:v/theta_sum for k,v in theta.items()}
     return theta
 
+def theta_to_counts(frac, all_tes):
+    counts = {k: 0 for k in all_tes}
+    for read, tes in frac.items():
+#        if max(tes.values()) > .5 or len(tes) == 1:
+        counts[max(tes.keys(), key= lambda x: tes[x])] += 1
+
+#        else:
+#            print(read, tes)
+    return counts
 
 def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores):
 
@@ -125,9 +137,11 @@ def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rat
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
         if abs(diff) < threshold:
+            return theta_to_counts(e_step(new_abundance, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores), all_tes)
             return {k:v*len(multimapped_reads) for k,v in new_abundance.items()}
         temp = reduce_temp(temp, cooling_rate)
         old_abundance = new_abundance
+    return theta_to_counts(e_step(new_abundance, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores), all_tes)
     return {k:v*len(multimapped_reads) for k,v in new_abundance.items()}
 
 
@@ -199,9 +213,9 @@ if __name__ == '__main__':
         for line in lines:
             buff = line.strip().split(",")
             name = buff[0]
-            tes = [x.split("/")[1] for x in buff[1:]]
-            scores = [x.split("/")[0] for x in buff[1:]]
-            multimapped_reads[name] = tes
+            tes = [x.split("*")[1] for x in buff[1:]]
+            scores = [x.split("*")[0] for x in buff[1:]]
+            multimapped_reads[name] = list(set(tes))
             align_scores[name] = {te:scores[e] for e, te in enumerate(tes)}
     
     with open(sam_loc, "r") as f:
@@ -228,16 +242,11 @@ if __name__ == '__main__':
     
     gc_bias = calc_gc_bias(unique_seq)
     gc_weights = {te:gc_weight(gc[te], gc_bias) for te in len_transcripts}
-
+    em_counts = {}
+    print(sum(unique_counts.values()))
     em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores)
-    non_zero = {k:round(v) for k,v in em_counts.items() if v > 3}
 
-    all_tes = {k:0 for k in len_transcripts}
-    for te in all_tes:
-        if te in unique_counts:
-            all_tes[te] += unique_counts[te]
-        if te in non_zero.keys():
-            all_tes[te] += non_zero[te]
+    all_tes = {k:unique_counts.get(k, 0) + em_counts.get(k, 0) for k in len_transcripts}
 
     out_loc = base_loc + "manuscript/out/saem_" + n_run + ".out"
 
