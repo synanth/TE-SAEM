@@ -123,13 +123,13 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_
 def theta_to_counts(frac, all_tes):
     counts = {k: 0 for k in all_tes}
     for read, tes in frac.items():
-#        counts[max(tes.keys(), key= lambda x: tes[x])] += 1
-#        print(read, tes)
-        if max(tes.values()) > .5:
-            counts[max(tes.keys(), key= lambda x: tes[x])] += 1
+        counts[max(tes.keys(), key= lambda x: tes[x])] += 1
+        print(read, tes)
+#        if max(tes.values()) > 1/len(tes):
+#            counts[max(tes.keys(), key= lambda x: tes[x])] += 1
 
-        else:
-            print(read, tes)
+#        else:
+#            print(read, tes)
     return counts
 
 def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores):
