@@ -5,7 +5,8 @@ import random
 ## sa ##
 def sa(old_abundance, temp):
     sa_abundance = old_abundance.copy()
-    n_neighbors = max(1, min(round(len(sa_abundance)*temp),100))
+    n_neighbors = max(1, min(round(len(sa_abundance)*temp),1000))
+    #n_neighbors = max(1, min(round(len(sa_abundance)*temp),100))
     tes = list(sa_abundance.keys())
     vals = sa_abundance.values()
     mean_val = sum(vals)/len(tes)
@@ -32,7 +33,8 @@ def accept_sa(ll_old, ll_sa, temp, n):
         return True
     if abs(delta_ll) < 1e-6:
         return False
-    accept_rate = math.exp(delta_ll/temp)
+    print(-delta_ll/temp)
+    accept_rate = math.exp(-delta_ll/temp)
     if random.random() < accept_rate:
         print(delta_ll, accept_rate)
         return True
@@ -50,14 +52,20 @@ def gc_weight(gc, gc_bias, gc_w=0.1, min_w=0.5,max_w=2.0):
 
 def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores):
     ll = 0.0
+#    noise_len = max(v for te_dict in e_lens.values() for v in te_dict.values())
+    noise_align = 0.01
     for read, tes in multimapped_reads.items():
         xs = [
             math.log(theta[te] 
-            * align_scores[read][te]) 
-#            math.log(theta[te] * gc_weights[te] * align_scores[read][te]) -
+#            * align_scores[read][te]) 
+            * gc_weights[te] * align_scores[read][te]) 
             - math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
             for te in tes
         ]
+        xs.append(math.log(theta["_noise"])
+        + math.log(noise_align)
+#        - math.log(noise_len))
+        )
         m = max(xs)
         ll += m + math.log(sum(math.exp(x - m) for x in xs))
     ll = ll / len(multimapped_reads)
@@ -65,10 +73,10 @@ def log_likelihood(theta, len_transcripts, multimapped_reads, read_lens, gc_weig
 
 
 def init_abundance(len_transcripts, multimapped_reads, all_tes):
-    theta = {k:0 for k in all_tes}
-
-    for te in all_tes:
-        theta[te] = 1/len(all_tes)
+    theta = {k:random.random() for k in all_tes}
+    theta["_noise"] = 1e-12
+#    for te in all_tes:
+    #    theta[te] = 1/len(all_tes)
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
     return theta
@@ -76,29 +84,36 @@ def init_abundance(len_transcripts, multimapped_reads, all_tes):
 
 def e_step(theta, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores):
     frac = {k:{} for k in multimapped_reads}
+#    noise_len = max(v for te_dict in e_lens.values() for v in te_dict.values())
+    noise_align = 0.01
 
     for read, tes in multimapped_reads.items():
         xs = []
         for te in tes:
             e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
-            xs.append(math.log(theta[te] * align_scores[read][te]) - math.log(e_len))
-#            xs.append(math.log(theta[te] * gc_weights[te]* align_scores[read][te]) - math.log(e_len))
-
+#            xs.append(math.log(theta[te] * align_scores[read][te]) - math.log(e_len))
+            xs.append(math.log(theta[te] * gc_weights[te]* align_scores[read][te]) - math.log(e_len))
+        xs.append(math.log(theta["_noise"])
+        + math.log(noise_align)
+#        - math.log(noise_len))
+        )
+        tes_plus = tes + ["_noise"]
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
 
-        for te, x in zip(tes, xs):
+        for te, x in zip(tes_plus, xs):
             frac[read][te] = math.exp(x - m) / Z
 
     return frac
 
 
-def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes):
-    theta = {k: 0 for k in all_tes}
-
+def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts):
+    theta = {k: unique_counts.get(k, 0) for k in all_tes}
+    theta["_noise"] = .0001
     for read, tes in multimapped_reads.items():
         for te in tes:
             theta[te] += frac[read][te]
+        theta["_noise"] += frac[read]["_noise"]
     theta = {k:max(v, 1e-12) for k,v in theta.items()}
     theta_sum = sum(theta.values())
     theta = {k:v/theta_sum for k,v in theta.items()}
@@ -107,8 +122,10 @@ def m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes):
 def theta_to_counts(frac, all_tes):
     counts = {k: 0 for k in all_tes}
     for read, tes in frac.items():
-#        if max(tes.values()) > .5 or len(tes) == 1:
         counts[max(tes.keys(), key= lambda x: tes[x])] += 1
+        print(read, tes)
+#        if max(tes.values()) > .5 or len(tes) == 1:
+#            counts[max(tes.keys(), key= lambda x: tes[x])] += 1
 
 #        else:
 #            print(read, tes)
@@ -119,6 +136,7 @@ def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rat
     threshold = 1e-6
     temp = 1.0
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
+    all_tes.append("_noise")
     old_abundance = init_abundance(len_transcripts, multimapped_reads, all_tes)
 
     #for i in range(1,10000):
@@ -132,7 +150,7 @@ def em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rat
             temp = reduce_temp(temp, cooling_rate)
             continue
         frac = e_step(old_abundance, multimapped_reads, len_transcripts, read_lens, gc_weights, align_scores)
-        new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes)
+        new_abundance = m_step(frac, len_transcripts, read_lens, multimapped_reads, all_tes, unique_counts)
         ll_new = log_likelihood(new_abundance, len_transcripts, multimapped_reads, read_lens, gc_weights, align_scores)
         diff = ll_new - ll_old
         print(i, diff, ll_old, ll_new)
@@ -241,10 +259,14 @@ if __name__ == '__main__':
     align_scores = norm_align_scores(align_scores)
     
     gc_bias = calc_gc_bias(unique_seq)
-    gc_weights = {te:gc_weight(gc[te], gc_bias) for te in len_transcripts}
+    #gc_weights = {te:gc_weight(gc[te], gc_bias) for te in len_transcripts}
+    gc_weights = {te:.2*gc_weight(gc[te], gc_bias) for te in len_transcripts}
     em_counts = {}
     print(sum(unique_counts.values()))
     em_counts = em(len_transcripts, read_lens, multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores)
+    print(em_counts["_noise"])
+    if "_noise" in em_counts:
+        del em_counts["_noise"]
 
     all_tes = {k:unique_counts.get(k, 0) + em_counts.get(k, 0) for k in len_transcripts}
 
