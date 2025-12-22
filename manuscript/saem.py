@@ -26,14 +26,14 @@ def reduce_temp(temp, cooling_rate, i, ll_diff, c=2.0):
     ## testing geometric cooling ##
     new_temp = cooling_rate * temp
     ## testing log-geometric cooling ##
-    #new_temp = (temp/math.log(i + c)) * (cooling_rate **i)
+#    new_temp = (temp/math.log(i + c)) * (cooling_rate **i)
     ## cost aware cooling ##
 #    new_temp = (temp/math.log(i+c+abs(ll_diff)))
     return new_temp 
 
 
 def accept_sa(ll_old, ll_sa, temp, n):
-    delta_ll = ll_sa -ll_old
+    delta_ll = max(ll_sa -ll_old, -700)
     if delta_ll > 0:
         print(">")
         return True
@@ -59,20 +59,19 @@ def gc_weight(gc, gc_bias, gc_w=0.1, min_w=0.5,max_w=2.0):
 
 def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens):
     ll = 0.0
-    noise_len = max(len_transcripts.values())
-    noise_align = 1e-6
+    noise_align = .1
 
     for read, tes in multimapped_reads.items():
         xs = [
             math.log(theta[te] 
             * gc_weights[te] 
             * align_scores[read][te]) 
-            - math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
+            - math.log(e_lens[read][te])
             for te in tes
         ]
         xs.append(math.log(theta["_noise"])
         + math.log(noise_align)
-        - math.log(noise_len)
+        - math.log(e_lens[read]["_noise"])
         )
         m = max(xs)
         ll += m + math.log(sum(math.exp(x - m) for x in xs))
@@ -82,7 +81,7 @@ def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens):
 
 def init_abundance(multimapped_reads, all_tes):
     theta = {k:random.random() for k in all_tes}
-    theta["_noise"] = 1e-12
+    theta["_noise"] = 1e-3
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
     return theta
@@ -90,21 +89,19 @@ def init_abundance(multimapped_reads, all_tes):
 
 def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
     frac = {k:{} for k in multimapped_reads}
-    noise_len = max(len_transcripts.values())
-    noise_align = 1e-6
+    noise_align = .1
 
     for read, tes in multimapped_reads.items():
         xs = []
         for te in tes:
-            e_len = max(len_transcripts[te] - read_lens[read] + 1, 1)
             xs.append(math.log(theta[te] 
             * gc_weights[te]
             * align_scores[read][te]) 
-            - math.log(e_len))
+            - math.log(e_lens[read][te]))
 
         xs.append(math.log(theta["_noise"])
         + math.log(noise_align)
-        - math.log(noise_len)
+        - math.log(e_lens[read]["_noise"])
         )
         tes_plus = tes + ["_noise"]
         m = max(xs)
@@ -115,9 +112,9 @@ def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
     return frac
 
 
-def m_step(frac, multimapped_reads, all_tes, unique_counts):
-    theta = {k: unique_counts.get(k, 0) for k in all_tes}
-    theta["_noise"] = 1e-8
+def m_step(frac, multimapped_reads, all_tes, unique_counts, alpha = .3):
+    theta = {k: alpha*unique_counts.get(k, 0) for k in all_tes}
+    theta["_noise"] = 1e-6
     for read, tes in multimapped_reads.items():
         for te in tes:
             theta[te] += frac[read][te]
@@ -131,11 +128,9 @@ def m_step(frac, multimapped_reads, all_tes, unique_counts):
 def theta_to_counts(frac, all_tes):
     counts = {k: 0 for k in all_tes}
     for read, tes in frac.items():
-#        counts[max(tes.keys(), key= lambda x: tes[x])] += 1
-#        print(read, tes)
-        if max(tes.values()) > 1/len(tes):
-            counts[max(tes.keys(), key= lambda x: tes[x])] += 1
-
+        vals = sorted(tes.items(), key = lambda x: x[1], reverse = True)
+        if vals[0][1] - vals[1][1] > .1:
+            counts[vals[0][0]] += 1
         else:
             print(read, tes)
     return counts
@@ -200,9 +195,12 @@ def norm_align_scores(align_scores, tau=0.5):
 
 def calc_e_lens(multimapped_reads, len_transcripts, read_lens):
     e_lens = {k:{} for k in multimapped_reads}
+    len_max = max(len_transcripts.values())
     for read, tes in multimapped_reads.items():
         for te in tes:
             e_lens[read][te] = max(len_transcripts[te] - read_lens[read] + 1, 1)
+    for read in multimapped_reads:
+        e_lens[read]["_noise"] = max(len_max - read_lens[read] +1,1)
     return e_lens
 
 
@@ -270,14 +268,11 @@ if __name__ == '__main__':
             buff = line.strip().split()
             name = buff[0].split("/")[0]
             read_lens[name] = len(buff[9])
-
     align_scores = norm_align_scores(align_scores)
-    
     gc_bias = calc_gc_bias(unique_seq)
     gc_weights = {te:.2*gc_weight(gc[te], gc_bias) for te in len_transcripts}
     e_lens = calc_e_lens(multimapped_reads, len_transcripts, read_lens)
 
-    print(sum(unique_counts.values()))
     em_counts = em(multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores, e_lens)
     print(em_counts["_noise"])
     if "_noise" in em_counts:
