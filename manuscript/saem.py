@@ -7,18 +7,12 @@ import statistics
 ## sa ##
 def sa(old_abundance, temp):
     sa_abundance = old_abundance.copy()
-    n_neighbors = max(1, min(round(len(sa_abundance)*temp),2000))
     tes = [k for k in sa_abundance.keys() if k != "_noise"]
-    vals = sa_abundance.values()
-    
-    mean_val = sum(vals)/len(tes)
-#    step_size = math.sqrt(sum((v- mean_val)**2 for v in vals))
-#    step_size = temp * sa_abundance
+    n_neighbors = max(1, min(round(len(tes)*temp),200))
 
     for idx in random.sample(tes, n_neighbors):
         step_size = temp * sa_abundance[idx]
         change = random.gauss(0, step_size)
-#        change = random.uniform(-step_size*temp, step_size*temp)
         sa_abundance[idx] = max(sa_abundance[idx] +change, 1e-100)
    
     sum_norm = sum(sa_abundance.values())
