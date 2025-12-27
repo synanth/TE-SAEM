@@ -18,7 +18,7 @@ def sa(old_abundance, temp):
     sum_norm = sum(sa_abundance.values())
     sa_abundance["_noise"] = old_abundance["_noise"]
     sa_abundance= {k:v/sum_norm for k,v in sa_abundance.items()}
-    return sa_abundance
+    return sa_abundance, n_neighbors
 
 
 def reduce_temp(temp, accept_rate, target=.20, slow=.99, fast=.92, min_temp=1e-4, max_temp=1):
@@ -33,12 +33,13 @@ def reduce_temp(temp, accept_rate, target=.20, slow=.99, fast=.92, min_temp=1e-4
 
 def accept_sa(ll_old, ll_sa, temp, n):
     delta_ll = ll_sa -ll_old
+    delta = delta_ll/n
     if delta_ll > 0:
         return True
-    if abs(delta_ll) < 1e-6:
+    if abs(delta) < 1e-6:
         return False
     try:
-        prob = math.exp(delta_ll/temp)
+        prob = math.exp(delta/temp)
     except:
         prob = 0
     if random.random() < prob:
@@ -72,7 +73,7 @@ def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens):
         )
         m = max(xs)
         ll += m + math.log(sum(math.exp(x - m) for x in xs))
-    ll = ll / len(multimapped_reads)
+#    ll = ll / len(multimapped_reads)
     return ll
 
 
@@ -166,11 +167,11 @@ def em(multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores,
 
         attempted += 1
 
-        sa_abundance = sa(old_abundance, temp)
+        sa_abundance, n_neighbors = sa(old_abundance, temp)
         ll_sa = log_likelihood(sa_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
         ll_old = log_likelihood(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
 
-        if accept_sa(ll_old, ll_sa, temp, len(multimapped_reads)):
+        if accept_sa(ll_old, ll_sa, temp, n_neighbors):
             print(str(i) + "\t" + "accepted\t" + str(ll_old) +"\t" + str(ll_sa) +"\t" + str(temp))
             accepted += 1
             old_abundance = sa_abundance
