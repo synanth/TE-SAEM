@@ -21,22 +21,22 @@ def sa(old_abundance, temp):
     return sa_abundance, n_neighbors
 
 
-def reduce_temp(temp, accept_rate, target=.20, slow=.99, fast=.92, min_temp=1e-4, max_temp=1):
+def reduce_temp(temp, accept_rate, target=.20, slow=.99, fast=.85, min_temp=1e-4, max_temp=1):
     ## testing geometric cooling ##
  #   new_temp = cooling_rate * temp
     if accept_rate > target:
-        temp *= slow
-    else:
         temp *= fast
+    else:
+        temp *= slow
     return max(min(temp, max_temp), min_temp)
 
 
 def accept_sa(ll_old, ll_sa, temp, n):
     delta_ll = ll_sa -ll_old
     delta = delta_ll/n
-    if delta_ll > 0:
+    if delta > 0:
         return True
-    if abs(delta) < 1e-6:
+    if abs(delta) < -50 * temp:
         return False
     try:
         prob = math.exp(delta/temp)
