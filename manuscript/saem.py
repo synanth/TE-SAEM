@@ -44,9 +44,11 @@ def accept_sa(ll_old, ll_sa, temp, n):
         return True
     if abs(delta_ll) < 1e-6:
         return False
-    delta_ll_hat = max(-delta_ll/temp, 700)
-    accept_rate = math.exp(delta_ll_hat)
-    if random.random() < accept_rate:
+    try:
+        prob = math.exp(delta_ll/temp)
+    except:
+        prob = 0
+    if random.random() < prob:
         return True
     return False
 
