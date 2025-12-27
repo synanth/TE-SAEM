@@ -34,12 +34,12 @@ def reduce_temp(temp, accept_rate, target=.20, slow=.99, fast=.85, min_temp=1e-4
 def accept_sa(ll_old, ll_sa, temp, n):
     delta_ll = ll_sa -ll_old
     delta = delta_ll/n
-    if delta > 0:
+    if delta_ll > 0:
         return True
-    if abs(delta) < -50 * temp:
+    if delta_ll < -50 * temp:
         return False
     try:
-        prob = math.exp(delta/temp)
+        prob = math.exp(delta_ll/temp)
     except:
         prob = 0
     if random.random() < prob:
@@ -158,7 +158,7 @@ def em(multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores,
 
     for i in range(1,10000):
         ##
-        if i % 50 == 0 and attempted > 0:
+        if i % 20 == 0 and attempted > 0:
             rate = accepted/attempted
             target = get_target_rate(i)
             print(rate, target)
@@ -171,7 +171,7 @@ def em(multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores,
         ll_sa = log_likelihood(sa_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
         ll_old = log_likelihood(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
 
-        if accept_sa(ll_old, ll_sa, temp, n_neighbors):
+        if accept_sa(ll_old, ll_sa, temp, n_neighbors) and 1 < 2000:
             print(str(i) + "\t" + "accepted\t" + str(ll_old) +"\t" + str(ll_sa) +"\t" + str(temp))
             accepted += 1
             old_abundance = sa_abundance
