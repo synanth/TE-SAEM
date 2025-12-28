@@ -8,11 +8,12 @@ import statistics
 def sa(old_abundance, temp):
     sa_abundance = old_abundance.copy()
     tes = [k for k in sa_abundance.keys() if k != "_noise"]
-    n_neighbors = max(1, int(len(tes)*temp))
+    n_neighbors = max(1, int(len(tes)**temp))
     
     for idx in random.sample(tes, n_neighbors):
         log_theta = math.log(sa_abundance[idx])
-        delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.05)
+        #delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.25)
+        delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.1)
         sa_abundance[idx] = max(math.exp(log_theta+delta), 1e-100)
    
     sum_norm = sum(sa_abundance.values())
@@ -34,10 +35,10 @@ def reduce_temp(temp, cooling_rate):
 
 
 def accept_sa(ll_old, ll_sa,temp):
-    if ll_sa >= ll_old:
+    if ll_sa - ll_old > 1e-6:
         return True, "ll_sa"
     delta = (ll_sa-ll_old)/temp
-    if delta < -700:
+    if delta < -700 or ll_old - ll_sa < 1e-5:
         return False, "none"
     return random.random() < math.exp(delta), "accept"
 
@@ -78,9 +79,10 @@ def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens, u
     return ll
 
 
-def init_abundance(multimapped_reads, all_tes):
+def init_abundance(multimapped_reads, all_tes, unique_counts):
     theta = {k:random.random() for k in all_tes}
-    theta = {k:1/len(all_tes) for k in all_tes}
+#    theta = {k:1/len(all_tes) for k in all_tes}
+    theta = {k:unique_counts.get(k,0) + 1 for k in all_tes}
     theta["_noise"] = 1e-4
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
@@ -148,11 +150,11 @@ def get_best(new_abundance, best_abundance, ll_new, ll_best):
     
 
 def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens):
-    threshold = 1e-6
+    threshold = 1e-4
     temp = 1.0
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
     all_tes.append("_noise")
-    old_abundance = init_abundance(multimapped_reads, all_tes)
+    old_abundance = init_abundance(multimapped_reads, all_tes, unique_counts)
     cooling_rate = find_cooling_rate(len(all_tes))
     best_abundance = old_abundance
     ll_old = log_likelihood(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts)
