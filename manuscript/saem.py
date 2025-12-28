@@ -128,7 +128,7 @@ def theta_to_counts(frac, all_tes):
     rescue = []
     for read, tes in frac.items():
         vals = sorted(tes.items(), key = lambda x: x[1], reverse = True)
-        if vals[0][1] / (vals[1][1] + 1e-9) > 1.01:
+        if vals[0][1] / (vals[1][1] + 1e-9) > 1.05:
             counts[vals[0][0]] += 1
         else:
 #            print(read, tes)
@@ -166,8 +166,8 @@ def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens):
             best_abundance, ll_best = get_best(sa_abundance, best_abundance, ll_sa, ll_best)
             temp = reduce_temp(temp, cooling_rate)
             continue
-        elif temp < .05:
-            old_abundance, ll_old = get_best(old_abundance, best_abundance, ll_old, ll_best)
+#        elif temp < .05:
+#            old_abundance, ll_old = get_best(old_abundance, best_abundance, ll_old, ll_best)
             
         frac = e_step(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
         new_abundance = m_step(frac, multimapped_reads, all_tes, unique_counts)
