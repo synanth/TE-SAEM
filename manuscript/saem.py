@@ -12,7 +12,7 @@ def sa(old_abundance, temp):
     
     for idx in random.sample(tes, n_neighbors):
         log_theta = math.log(sa_abundance[idx])
-        delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.2)
+        delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.1)
         sa_abundance[idx] = max(math.exp(log_theta+delta), 1e-100)
    
     sa_abundance["_noise"] = old_abundance["_noise"]
@@ -79,7 +79,7 @@ def init_abundance(multimapped_reads, all_tes, unique_counts):
     theta = {k:random.random() for k in all_tes}
 #    theta = {k:1/len(all_tes) for k in all_tes}
     theta = {k:unique_counts.get(k,0) + 1 for k in all_tes}
-    theta["_noise"] = 1e-4
+    theta["_noise"] = 1e-5
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
     return theta
@@ -111,7 +111,6 @@ def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
 
 def m_step(frac, multimapped_reads, all_tes, unique_counts):
     theta = {k: unique_counts.get(k, 0) + .1 for k in all_tes}
-    #theta = {k: 0 for k in all_tes}
     theta["_noise"] = 1e-4
     for read, tes in multimapped_reads.items():
         for te in tes:
@@ -129,7 +128,7 @@ def theta_to_counts(frac, all_tes):
     rescue = []
     for read, tes in frac.items():
         vals = sorted(tes.items(), key = lambda x: x[1], reverse = True)
-        if vals[0][1] / (vals[1][1] + 1e-9) > 1.05:
+        if vals[0][1] / (vals[1][1] + 1e-9) > 1.01:
             counts[vals[0][0]] += 1
         else:
 #            print(read, tes)
