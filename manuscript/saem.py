@@ -11,9 +11,9 @@ def sa(old_abundance, temp):
     n_neighbors = max(1, min(round(len(tes)*temp),round(math.sqrt(len(tes)))))
     
     for idx in random.sample(tes, n_neighbors):
-        step_size = .05 * math.sqrt(temp) * sa_abundance[idx]
-        change = random.gauss(0, step_size)
-        sa_abundance[idx] = max(sa_abundance[idx] +change, 1e-100)
+        log_theta = math.log(sa_abundance[idx])
+        delta = random.gauss(0, math.sqrt(temp)*math.sqrt(sa_abundance[idx]))
+        sa_abundance[idx] = max(math.exp(log_theta+delta), 1e-100)
    
     sum_norm = sum(sa_abundance.values())
     sa_abundance["_noise"] = old_abundance["_noise"]
@@ -21,32 +21,25 @@ def sa(old_abundance, temp):
     return sa_abundance, n_neighbors
 
 
-def reduce_temp(temp, accept_rate, target=.20, slow=.99, fast=.9, min_temp=1e-6, max_temp=1):
+def find_cooling_rate(n_tes, base_rate=.99, min_rate=.9, max_rate=.999):
+    scale = math.log(n_tes+1)
+    rate = 1 - (1-base_rate)/scale
+    return min(max_rate, max(min_rate, rate))
+
+
+def reduce_temp(temp, cooling_rate):
     ## testing geometric cooling ##
-    cooling_rate = .99
     new_temp = cooling_rate * temp
     return max(new_temp, 1e-6)
-    if accept_rate > target:
-        temp *= fast
-    else:
-        temp *= slow
-    return max(min(temp, max_temp), min_temp)
 
 
-def accept_sa(ll_old, ll_sa, temp, n):
-    delta_ll = ll_sa -ll_old
-    delta = delta_ll/n
-    if delta_ll > 0 and abs(delta_ll) > 1e-6:
+def accept_sa(ll_old, ll_sa,temp):
+    if ll_sa >= ll_old:
         return True
-    if delta_ll < -50 * temp:
+    delta = (ll_sa-ll_old)/temp
+    if delta < -700:
         return False
-    try:
-        prob = math.exp(delta_ll/temp)
-    except:
-        prob = 0
-    if random.random() < prob:
-        return True
-    return False
+    return random.random() < math.exp(delta)
 
 
 ## em ##
@@ -81,8 +74,8 @@ def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens):
 
 def init_abundance(multimapped_reads, all_tes):
     theta = {k:random.random() for k in all_tes}
-#    theta = {k:1/len(all_tes) for k in all_tes}
-    theta["_noise"] = 1e-2
+    theta = {k:1/len(all_tes) for k in all_tes}
+    theta["_noise"] = 1e-3
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
     return theta
@@ -140,46 +133,25 @@ def theta_to_counts(frac, all_tes):
     print(sum(counts.values()))
     return set(rescue), counts
 
-def get_target_rate(i, max_iter=2000):
-    frac = i/max_iter
-    if frac < .2:
-        return .28
-    elif frac < .8:
-        return .12
-    else:
-        return .02
 
-
-
-def em(multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores, e_lens):
+def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens):
     threshold = 1e-6
     temp = 1.0
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
     all_tes.append("_noise")
     old_abundance = init_abundance(multimapped_reads, all_tes)
-    accepted = attempted = 0
+    cooling_rate = find_cooling_rate(len(all_tes))
 
 
     for i in range(1,10000):
-        ##
-#        if i % 10 == 0 and attempted > 0:
-#            rate = accepted/attempted
-#            target = get_target_rate(i)
-#            print(rate, target)
-#            temp = reduce_temp(temp, rate, target)
-#            accepted = attempted = 0
-
-#        attempted += 1
-
         sa_abundance, n_neighbors = sa(old_abundance, temp)
         ll_sa = log_likelihood(sa_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
         ll_old = log_likelihood(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
 
-        if accept_sa(ll_old, ll_sa, temp, n_neighbors) and 1 < 2000:
+        if accept_sa(ll_old, ll_sa, temp):
             print(str(i) + "\t" + "accepted\t" + str(ll_old) +"\t" + str(ll_sa) +"\t" + str(temp))
-            accepted += 1
             old_abundance = sa_abundance
-            temp = reduce_temp(temp, cooling_rate, i, (ll_sa - ll_old))
+            temp = reduce_temp(temp, cooling_rate)
             continue
         frac = e_step(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
         new_abundance = m_step(frac, multimapped_reads, all_tes, unique_counts)
@@ -188,7 +160,7 @@ def em(multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores,
         print(str(i) + "\trejected\t" +  str(diff) + "\t"  + str(ll_old) + "\t" + str(ll_new))
         if abs(diff) < threshold and max(abs(new_abundance[k] - old_abundance[k]) for k in new_abundance) < 1e-4:
             return theta_to_counts(e_step(new_abundance, multimapped_reads, gc_weights, align_scores, e_lens), all_tes)
-        temp = reduce_temp(temp, cooling_rate, i, diff)
+        temp = reduce_temp(temp, cooling_rate)
         old_abundance = new_abundance
     return theta_to_counts(e_step(new_abundance, multimapped_reads, gc_weights, align_scores, e_lens), all_tes)
 
@@ -237,9 +209,7 @@ def calc_e_lens(multimapped_reads, len_transcripts, read_lens):
 
 ## driver fxn ##
 if __name__ == '__main__':
-
-    cooling_rate = float(sys.argv[1])
-    n_run = sys.argv[2]
+    n_run = sys.argv[1]
 
     base_loc = "/home/stexocae/li_lab/saem/"
     gtf_loc = base_loc + "refs/hs1.gtf"
@@ -304,7 +274,7 @@ if __name__ == '__main__':
     gc_weights = {te:.1*gc_weight(gc[te], gc_bias) for te in len_transcripts}
     e_lens = calc_e_lens(multimapped_reads, len_transcripts, read_lens)
     em_counts = {}
-    rescue, em_counts = em(multimapped_reads, unique_counts, cooling_rate, gc_weights, align_scores, e_lens)
+    rescue, em_counts = em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens)
     print(em_counts["_noise"])
 
 
@@ -312,7 +282,7 @@ if __name__ == '__main__':
         del em_counts["_noise"]
     rescue_reads = {k:v for k,v in multimapped_reads.items() if k in rescue}
     print(len(rescue))
-    toss, rescue_counts = em(rescue_reads, unique_counts, cooling_rate, gc_weights, align_scores, e_lens)
+    toss, rescue_counts = em(rescue_reads, unique_counts, gc_weights, align_scores, e_lens)
 
     all_tes = {k:unique_counts.get(k, 0) + em_counts.get(k, 0) + rescue_counts.get(k,0) for k in len_transcripts}
 
