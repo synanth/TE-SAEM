@@ -12,12 +12,11 @@ def sa(old_abundance, temp):
     
     for idx in random.sample(tes, n_neighbors):
         log_theta = math.log(sa_abundance[idx])
-        #delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.25)
-        delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.1)
+        delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.2)
         sa_abundance[idx] = max(math.exp(log_theta+delta), 1e-100)
    
-    sum_norm = sum(sa_abundance.values())
     sa_abundance["_noise"] = old_abundance["_noise"]
+    sum_norm = sum(sa_abundance.values())
     sa_abundance= {k:v/sum_norm for k,v in sa_abundance.items()}
     return sa_abundance
 
@@ -73,9 +72,6 @@ def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens, u
         if te == "_noise":
             continue
         ll += math.log(theta[te] + 1e-9)*unique_counts.get(te,0)
-
-
-#    ll = ll / len(multimapped_reads)
     return ll
 
 
@@ -114,9 +110,9 @@ def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
 
 
 def m_step(frac, multimapped_reads, all_tes, unique_counts):
-    theta = {k: unique_counts.get(k, 0) for k in all_tes}
+    theta = {k: unique_counts.get(k, 0) + .1 for k in all_tes}
     #theta = {k: 0 for k in all_tes}
-    theta["_noise"] = 1e-2
+    theta["_noise"] = 1e-4
     for read, tes in multimapped_reads.items():
         for te in tes:
             theta[te] += frac[read][te]
@@ -133,7 +129,6 @@ def theta_to_counts(frac, all_tes):
     rescue = []
     for read, tes in frac.items():
         vals = sorted(tes.items(), key = lambda x: x[1], reverse = True)
-        #if vals[0][1] / (vals[1][1] + 1e-9) > 2:
         if vals[0][1] / (vals[1][1] + 1e-9) > 1.05:
             counts[vals[0][0]] += 1
         else:
@@ -163,8 +158,8 @@ def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens):
     for i in range(1,10000):
         sa_abundance = sa(old_abundance, temp)
         ll_sa = log_likelihood(sa_abundance, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts)
-#        ll_old = log_likelihood(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
         accept, lvl = accept_sa(ll_old, ll_sa, temp)
+        
         if accept and temp > .05:
             print(str(i) + "\t" + lvl + "\t" + str(ll_sa-ll_old) + "\t" + str(ll_sa) +"\t" + str(ll_best) +"\t" + str(temp))
             old_abundance = sa_abundance
@@ -172,8 +167,8 @@ def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens):
             best_abundance, ll_best = get_best(sa_abundance, best_abundance, ll_sa, ll_best)
             temp = reduce_temp(temp, cooling_rate)
             continue
- #       elif temp < .05:
- #           old_abundance, ll_old = get_best(old_abundance, best_abundance, ll_old, ll_best)
+        elif temp < .05:
+            old_abundance, ll_old = get_best(old_abundance, best_abundance, ll_old, ll_best)
             
         frac = e_step(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
         new_abundance = m_step(frac, multimapped_reads, all_tes, unique_counts)
@@ -305,7 +300,7 @@ if __name__ == '__main__':
         del em_counts["_noise"]
     rescue_reads = {k:v for k,v in multimapped_reads.items() if k in rescue}
     print(len(rescue))
-    #toss, rescue_counts = em(rescue_reads, unique_counts, gc_weights, align_scores, e_lens)
+    toss, rescue_counts = em(rescue_reads, unique_counts, gc_weights, align_scores, e_lens)
 
     all_tes = {k:unique_counts.get(k, 0) + em_counts.get(k, 0) + rescue_counts.get(k,0) for k in len_transcripts}
 
