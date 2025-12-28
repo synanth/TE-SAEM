@@ -12,7 +12,7 @@ def sa(old_abundance, temp):
     
     for idx in random.sample(tes, n_neighbors):
         log_theta = math.log(sa_abundance[idx])
-        delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.25)
+        delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.05)
         sa_abundance[idx] = max(math.exp(log_theta+delta), 1e-100)
    
     sum_norm = sum(sa_abundance.values())
@@ -112,7 +112,7 @@ def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
 
 
 def m_step(frac, multimapped_reads, all_tes, unique_counts):
-    theta = {k: math.sqrt(unique_counts.get(k, 0)) for k in all_tes}
+    theta = {k: unique_counts.get(k, 0) for k in all_tes}
     #theta = {k: 0 for k in all_tes}
     theta["_noise"] = 1e-2
     for read, tes in multimapped_reads.items():
