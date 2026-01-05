@@ -8,7 +8,7 @@ import statistics
 def sa(old_abundance, temp):
     sa_abundance = old_abundance.copy()
     tes = [k for k in sa_abundance.keys() if k != "_noise"]
-    n_neighbors = max(1, int(len(tes)**temp))
+    n_neighbors = random.randint(1, max(2,int(len(tes)**temp)))
     
     for idx in random.sample(tes, n_neighbors):
         log_theta = math.log(sa_abundance[idx])
@@ -34,24 +34,17 @@ def reduce_temp(temp, cooling_rate):
 
 
 def accept_sa(ll_old, ll_sa,temp):
-    if ll_sa - ll_old > 1e-6:
+    delta = ll_sa - ll_old
+    if delta > 1e-6:
         return True, "ll_sa"
-    delta = (ll_sa-ll_old)/temp
+    delta = (delta)/temp
+#    return False, "reject"
     if delta < -700 or ll_old - ll_sa < 1e-5:
-        return False, "none"
+        return False, "reject"
     return random.random() < math.exp(delta), "accept"
 
 
 ## em ##
-def gc_weight(gc, gc_bias, gc_w=0.1, min_w=0.5,max_w=2.0):
-    g_bin = round(gc/gc_w) * gc_w
-
-    if g_bin in gc_bias:
-        return gc_bias[g_bin]
-    bin_idx = min(gc_bias.keys(), key=lambda x: abs(x-g_bin))
-    return max(min(gc_bias[bin_idx], max_w), min_w)
-
-
 def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts):
     ll = 0.0
     for read, tes in multimapped_reads.items():
@@ -76,9 +69,7 @@ def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens, u
 
 
 def init_abundance(multimapped_reads, all_tes, unique_counts):
-#    theta = {k:random.random() for k in all_tes}
-#    theta = {k:1/len(all_tes) for k in all_tes}
-    theta = {k:unique_counts.get(k,0) + 1 for k in all_tes}
+    theta = {k:1/len(all_tes) for k in all_tes}
     theta["_noise"] = 1e-5
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
@@ -128,10 +119,9 @@ def theta_to_counts(frac, all_tes, counts_threshold):
     rescue = []
     for read, tes in frac.items():
         vals = sorted(tes.items(), key = lambda x: x[1], reverse = True)
-        if vals[0][1] / (vals[1][1] + 1e-9) > counts_threshold:
+        if vals[0][1] / (vals[1][1] + 1e-9) > 1: #counts_threshold:
             counts[vals[0][0]] += 1
         else:
-            print(read, tes)
             rescue += [read]
     print(sum(counts.values()))
     return set(rescue), counts
@@ -141,40 +131,51 @@ def get_best(new_abundance, best_abundance, ll_new, ll_best):
     if ll_new > ll_best:
         return new_abundance, ll_new
     return best_abundance, ll_best
-    
+   
+def adaptive_cooling(temp, rate):
+    if rate <= .4:
+        temp *= .998
+    else:
+        temp *= .95
+    return temp
 
-def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens, counts_threshold=1.01):
+
+def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens, counts_threshold=1.02):
     threshold = 1e-4
     temp = 1.0
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
     all_tes.append("_noise")
     old_abundance = init_abundance(multimapped_reads, all_tes, unique_counts)
     cooling_rate = find_cooling_rate(len(all_tes))
-    best_abundance = old_abundance
     ll_old = log_likelihood(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts)
-    ll_best = ll_old
-
+    accepted = 0
+    
     for i in range(1,10000):
+        if i % 50 == 0:
+            rate = accepted/50
+            accepted = 0
+#            temp = adaptive_cooling(temp, rate)
+            print(str(i)+ "\t" + str(rate) + "\t" + str(ll_old) + "\t" + str(temp))
         sa_abundance = sa(old_abundance, temp)
         ll_sa = log_likelihood(sa_abundance, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts)
         accept, lvl = accept_sa(ll_old, ll_sa, temp)
-        
-        if accept and temp > .05:
-            print(str(i) + "\t" + lvl + "\t" + str(ll_sa-ll_old) + "\t" + str(ll_sa) +"\t" + str(ll_best) +"\t" + str(temp))
+               
+        if accept: #and temp > .005:
+#            print(str(i) + "\t" + lvl + "\t" + str(ll_sa-ll_old) + "\t" + str(ll_sa) +"\t" + str(temp))
+            if lvl == "accept":
+                accepted += 1
             old_abundance = sa_abundance
             ll_old = ll_sa
-            best_abundance, ll_best = get_best(sa_abundance, best_abundance, ll_sa, ll_best)
             temp = reduce_temp(temp, cooling_rate)
             continue
-#        elif temp < .05:
-#            old_abundance, ll_old = get_best(old_abundance, best_abundance, ll_old, ll_best)
             
         frac = e_step(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
         new_abundance = m_step(frac, multimapped_reads, all_tes, unique_counts)
         ll_new = log_likelihood(new_abundance, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts)
         diff = ll_new - ll_old
-        print(str(i) + "\treject\t" + str(diff) + "\t" + str(ll_new) + "\t" + str(ll_best) + "\t" + str(temp))
-        if abs(diff) < threshold and max(abs(new_abundance[k] - old_abundance[k]) for k in new_abundance) < 1e-4:
+
+#        print(str(i) + "\treject\t" + str(diff) + "\t" + str(ll_new) + "\t" + str(temp))
+        if abs(diff) < threshold:
             return theta_to_counts(e_step(new_abundance, multimapped_reads, gc_weights, align_scores, e_lens), all_tes, counts_threshold)
         temp = reduce_temp(temp, cooling_rate)
         old_abundance = new_abundance
@@ -183,6 +184,15 @@ def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens, count
 
 
 ## LL model setup ##
+def gc_weight(gc, gc_bias, gc_w=0.1, min_w=0.5,max_w=2.0):
+    g_bin = round(gc/gc_w) * gc_w
+
+    if g_bin in gc_bias:
+        return gc_bias[g_bin]
+    bin_idx = min(gc_bias.keys(), key=lambda x: abs(x-g_bin))
+    return max(min(gc_bias[bin_idx], max_w), min_w)
+
+
 def gc_content(read):
     return (read.count("G") + read.count("C"))/max(1, len(read))
 
@@ -233,8 +243,6 @@ if __name__ == '__main__':
     unique_counts_loc = base_loc + "sim_data/star.unique.counts"
     multimapped_loc = base_loc + "sim_data/star.multi.translation"
     sam_loc = base_loc + "sim_data/alignment/aligned.sam"
-#    sam_loc = base_loc + "sim_data/alignment/segemehl.sam"
-#    assembly_loc = base_loc + "sim_data/assembly/to_contigs.sam"
 
     len_transcripts = {}
     unique_counts = {}
@@ -280,26 +288,21 @@ if __name__ == '__main__':
             if nh == "NH:i:1":
                 unique_seq[name] = buff[9]
 
- #   with open(assembly_loc, "r") as f:
- #       lines = f.readlines()
- #       for line in lines:
- #           if line[0] == "@":
- #               continue
- #           buff = line.strip().split()
- #           name = buff[0].split("/")[0]
- #           read_lens[name] = len(buff[9])
-
+    print("loading data")
     align_scores = norm_align_scores(align_scores)
     gc_bias = calc_gc_bias(unique_seq)
     gc_weights = {te:.1*gc_weight(gc[te], gc_bias) for te in len_transcripts}
+
     e_lens = calc_e_lens(multimapped_reads, len_transcripts, read_lens)
     rescue_counts, em_counts = {}, {}
+    print("starting saem")
     rescue, em_counts = em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens)
-    if "_noise" in em_counts:
-        del em_counts["_noise"]
+    print(str(sum(em_counts.values())) + " reads classified")
+    print("starting rescue")
     rescue_reads = {k:v for k,v in multimapped_reads.items() if k in rescue}
     toss, rescue_counts = em(rescue_reads, unique_counts, gc_weights, align_scores, e_lens)
-
+    print(str(sum(rescue_counts.values())) + " reads rescued")
+    print(str(len(toss)) + " reads unable to be classified")
     all_tes = {k:unique_counts.get(k, 0) + em_counts.get(k, 0) + rescue_counts.get(k,0) for k in len_transcripts}
 
     out_loc = base_loc + "manuscript/out/saem_" + n_run + ".out"
