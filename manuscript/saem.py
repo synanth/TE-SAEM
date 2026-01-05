@@ -8,12 +8,10 @@ import statistics
 def sa(old_abundance, temp):
     sa_abundance = old_abundance.copy()
     tes = [k for k in sa_abundance.keys() if k != "_noise"]
-    n_neighbors = random.randint(1, max(2,int(len(tes)**temp)))
-    
+    n_neighbors = random.randint(2, int(0.1*len(tes)*temp))
     for idx in random.sample(tes, n_neighbors):
-        log_theta = math.log(sa_abundance[idx])
-        delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.1)
-        sa_abundance[idx] = max(math.exp(log_theta+delta), 1e-100)
+        delta = random.gauss(0, temp*.1)
+        sa_abundance[idx] = max(sa_abundance[idx]*math.exp(delta), 1e-100)
    
     sa_abundance["_noise"] = old_abundance["_noise"]
     sum_norm = sum(sa_abundance.values())
@@ -38,7 +36,6 @@ def accept_sa(ll_old, ll_sa,temp):
     if delta > 1e-6:
         return True, "ll_sa"
     delta = (delta)/temp
-#    return False, "reject"
     if delta < -700 or ll_old - ll_sa < 1e-5:
         return False, "reject"
     return random.random() < math.exp(delta), "accept"
@@ -50,7 +47,7 @@ def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens, u
     for read, tes in multimapped_reads.items():
         xs = [
             math.log(theta[te])
-            + gc_weights[te] 
+#            + gc_weights[te] 
             + align_scores[read][te]
             - e_lens[read][te]
             for te in tes
@@ -83,7 +80,7 @@ def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
         xs = []
         for te in tes:
             xs.append(math.log(theta[te]) 
-            + gc_weights[te]
+ #           + gc_weights[te]
             + align_scores[read][te]
             - e_lens[read][te])
 
@@ -115,15 +112,13 @@ def m_step(frac, multimapped_reads, all_tes, unique_counts):
 
 def theta_to_counts(frac, all_tes, counts_threshold):
     counts = {k: 0 for k in all_tes}
-    print(len(frac))
     rescue = []
     for read, tes in frac.items():
         vals = sorted(tes.items(), key = lambda x: x[1], reverse = True)
-        if vals[0][1] / (vals[1][1] + 1e-9) > 1: #counts_threshold:
+        if vals[0][1] / (vals[1][1] + 1e-9) > counts_threshold:
             counts[vals[0][0]] += 1
         else:
             rescue += [read]
-    print(sum(counts.values()))
     return set(rescue), counts
 
 
@@ -131,10 +126,11 @@ def get_best(new_abundance, best_abundance, ll_new, ll_best):
     if ll_new > ll_best:
         return new_abundance, ll_new
     return best_abundance, ll_best
-   
+  
+
 def adaptive_cooling(temp, rate):
     if rate <= .4:
-        temp *= .998
+        temp *= .995
     else:
         temp *= .95
     return temp
@@ -161,7 +157,6 @@ def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens, count
         accept, lvl = accept_sa(ll_old, ll_sa, temp)
                
         if accept: #and temp > .005:
-#            print(str(i) + "\t" + lvl + "\t" + str(ll_sa-ll_old) + "\t" + str(ll_sa) +"\t" + str(temp))
             if lvl == "accept":
                 accepted += 1
             old_abundance = sa_abundance
@@ -174,7 +169,6 @@ def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens, count
         ll_new = log_likelihood(new_abundance, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts)
         diff = ll_new - ll_old
 
-#        print(str(i) + "\treject\t" + str(diff) + "\t" + str(ll_new) + "\t" + str(temp))
         if abs(diff) < threshold:
             return theta_to_counts(e_step(new_abundance, multimapped_reads, gc_weights, align_scores, e_lens), all_tes, counts_threshold)
         temp = reduce_temp(temp, cooling_rate)
@@ -240,8 +234,8 @@ if __name__ == '__main__':
 
     base_loc = "/home/stexocae/li_lab/saem/"
     gtf_loc = base_loc + "refs/hs1.gtf"
-    unique_counts_loc = base_loc + "sim_data/star.unique.counts"
-    multimapped_loc = base_loc + "sim_data/star.multi.translation"
+    unique_counts_loc = base_loc + "sim_data/bowtie2.unique.counts"
+    multimapped_loc = base_loc + "sim_data/bowtie2.multi.translation"
     sam_loc = base_loc + "sim_data/alignment/aligned.sam"
 
     len_transcripts = {}
