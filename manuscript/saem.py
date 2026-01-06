@@ -5,9 +5,9 @@ import statistics
 
 
 ## sa ##
-def sa(old_abundance, temp):
+def sa(old_abundance, temp, unique_counts):
     sa_abundance = old_abundance.copy()
-    tes = [k for k in sa_abundance.keys() if k != "_noise"]
+    tes = [k for k in sa_abundance.keys() if k != "_noise" and unique_counts.get(k,0) == 0]
     n_neighbors = max(1, int(len(tes)**temp))
     
     for idx in random.sample(tes, n_neighbors):
@@ -96,7 +96,7 @@ def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
 
 
 def m_step(frac, multimapped_reads, all_tes, unique_counts):
-    theta = {k: unique_counts.get(k, 0) * .5 for k in all_tes}
+    theta = {k: unique_counts.get(k, 0) + .1 for k in all_tes}
 #    theta = {k: 0 for k in all_tes}
     theta["_noise"] = 0
     for read, tes in multimapped_reads.items():
@@ -139,7 +139,7 @@ def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens):
     ll_best = ll_old
 
     for i in range(1,10000):
-        sa_abundance = sa(old_abundance, temp)
+        sa_abundance = sa(old_abundance, temp, unique_counts)
         ll_sa = log_likelihood(sa_abundance, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts)
         accept, lvl = accept_sa(ll_old, ll_sa, temp)
         
