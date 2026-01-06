@@ -56,7 +56,7 @@ def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens, u
     ll = 0.0
     for read, tes in multimapped_reads.items():
         xs = [
-            math.log(theta[te])
+            math.log(max(theta[te],1e-300))
 #            + gc_weights[te] 
             + align_scores[read][te]
             - e_lens[read][te]
@@ -68,10 +68,10 @@ def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens, u
         )
         m = max(xs)
         ll += m + math.log(sum(math.exp(x - m) for x in xs))
-    for te in theta:
-        if te == "_noise":
-            continue
-        ll += math.log(theta[te])#*unique_counts.get(te,0)
+#    for te in theta:
+#        if te == "_noise":
+#            continue
+#        ll += math.log(theta[te])#*unique_counts.get(te,0)
     return ll
 
 
@@ -111,12 +111,12 @@ def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
 def m_step(frac, multimapped_reads, all_tes, unique_counts):
     theta = {k: unique_counts.get(k, 0) + .1 for k in all_tes}
     theta = {k: 0 for k in all_tes}
-    theta["_noise"] = 1e-2
+    theta["_noise"] = 0
     for read, tes in multimapped_reads.items():
         for te in tes:
             theta[te] += frac[read][te]
         theta["_noise"] += frac[read]["_noise"]
-    theta = {k:max(v, 1e-9) for k,v in theta.items()}
+#    theta = {k:max(v, 1e-9) for k,v in theta.items()}
     theta_sum = sum(theta.values())
     theta = {k:v/theta_sum for k,v in theta.items()}
     return theta
