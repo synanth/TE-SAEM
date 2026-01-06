@@ -1,7 +1,6 @@
 import sys
 import math
 import random
-import statistics
 
 
 ## sa ##
@@ -12,7 +11,7 @@ def sa(old_abundance, temp, unique_counts):
     
     for idx in random.sample(tes, n_neighbors):
         log_theta = math.log(sa_abundance[idx])
-        delta = random.gauss(0, math.sqrt(temp))
+        delta = random.gauss(0, math.sqrt(temp) / len(tes))
         sa_abundance[idx] = max(math.exp(log_theta+delta), 1e-100)
    
     sum_norm = sum(sa_abundance.values())
@@ -75,11 +74,10 @@ def e_step(theta, multimapped_reads, align_scores, e_lens):
             xs.append(math.log(theta[te]) 
             + align_scores[read][te]
             - e_lens[read][te])
-        tes_plus = tes # ["_noise"]
         m = max(xs)
         Z = sum(math.exp(x - m) for x in xs)
 
-        for te, x in zip(tes_plus, xs):
+        for te, x in zip(tes, xs):
             frac[read][te] = math.exp(x - m) / Z
     return frac
 
@@ -136,7 +134,7 @@ def em(multimapped_reads, unique_counts, align_scores, e_lens):
             best_abundance, ll_best = get_best(sa_abundance, best_abundance, ll_sa, ll_best)
             temp = reduce_temp(temp, cooling_rate)
             continue
-        elif temp < .05 and i > 100:
+        elif temp < .05:
             old_abundance, ll_old = get_best(old_abundance, best_abundance, ll_old, ll_best)
 #            return theta_to_counts(e_step(old_abundance, multimapped_reads, align_scores, e_lens), all_tes)
             
