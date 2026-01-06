@@ -11,7 +11,7 @@ def sa(old_abundance, temp):
     n_neighbors = max(1, int(len(tes)**temp))
     
     for idx in random.sample(tes, n_neighbors):
-        log_theta = math.log(sa_abundance[idx])
+        log_theta = math.log(max(sa_abundance[idx], 1e-300))
         delta = random.gauss(0, math.sqrt(sa_abundance[idx])*.1)
         sa_abundance[idx] = max(math.exp(log_theta+delta), 1e-100)
    
@@ -90,7 +90,7 @@ def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
     for read, tes in multimapped_reads.items():
         xs = []
         for te in tes:
-            xs.append(math.log(theta[te]) 
+            xs.append(math.log(max(theta[te], 1e-300)) 
 #            + gc_weights[te]
             + align_scores[read][te]
             - e_lens[read][te])
