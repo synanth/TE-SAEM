@@ -99,7 +99,7 @@ def theta_to_counts(frac, all_tes):
     
     for read, tes in frac.items():
         vals = sorted(tes.items(), key = lambda x: x[1], reverse = True)
-        if vals[0][1] / (vals[1][1] + 1e-9) > 1.05:
+        if len(vals) == 1 or vals[0][1] / (vals[1][1] + 1e-9) > 1.01:
             counts[vals[0][0]] += 1
         else:
             rescue += [read]
@@ -123,12 +123,14 @@ def em(multimapped_reads, unique_counts, align_scores, e_lens):
     ll_best = ll_old
 
     for i in range(1,10000):
+        if i % 50 == 0:
+           print(str(i) + "\t" + str(ll_old) + "\t" + str(ll_best) + "\t" + str(temp)) 
         sa_abundance = sa(old_abundance, temp, unique_counts)
         ll_sa = log_likelihood(sa_abundance, multimapped_reads, align_scores, e_lens, unique_counts, all_tes)
         accept, lvl = accept_sa(ll_old, ll_sa, temp)
 
         if accept:
-            print(str(i) + "\t" + lvl + "\t" + str(ll_sa-ll_old) + "\t" + str(ll_sa) +"\t" + str(ll_best) +"\t" + str(temp))
+#            print(str(i) + "\t" + lvl + "\t" + str(ll_sa-ll_old) + "\t" + str(ll_sa) +"\t" + str(ll_best) +"\t" + str(temp))
             old_abundance = sa_abundance
             ll_old = ll_sa
             best_abundance, ll_best = get_best(sa_abundance, best_abundance, ll_sa, ll_best)
@@ -143,7 +145,7 @@ def em(multimapped_reads, unique_counts, align_scores, e_lens):
         new_abundance = m_step(frac, multimapped_reads, all_tes, unique_counts)
         ll_new = log_likelihood(new_abundance, multimapped_reads, align_scores, e_lens, unique_counts, all_tes)
         diff = ll_new - ll_old
-        print(str(i) + "\treject\t" + str(diff) + "\t" + str(ll_new) + "\t" + str(ll_best) + "\t" + str(temp))
+#        print(str(i) + "\treject\t" + str(diff) + "\t" + str(ll_new) + "\t" + str(ll_best) + "\t" + str(temp))
         if abs(diff) < threshold:
             return theta_to_counts(e_step(new_abundance, multimapped_reads, align_scores, e_lens), all_tes)
         temp = reduce_temp(temp, cooling_rate)
@@ -158,7 +160,7 @@ def norm_align_scores(align_scores):
     for read, tes in align_scores.items():
         max_score = max(tes.values())
         weights = {te: int(asv)/int(max_score) for te, asv in tes.items()}
-        weights = {te: math.log(int(asv)+1) for te, asv in tes.items()}
+        #weights = {te: math.log(int(asv)+1) for te, asv in tes.items()}
         align_weight[read] = weights
     return align_weight
 
@@ -172,6 +174,14 @@ def calc_e_lens(multimapped_reads, len_transcripts, read_lens):
     return e_lens
 
 
+def filter_by_align_score(multimapped_reads, align_scores):
+    for read,tes in multimapped_reads.items():
+        new_tes = []
+        for te in tes:
+            if align_scores[read][te] > .98:
+                new_tes += [te]
+        multimapped_reads[read] = new_tes
+    return multimapped_reads
 
 
 ## driver fxn ##
@@ -226,6 +236,7 @@ if __name__ == '__main__':
                 unique_seq[name] = buff[9]
 
     align_scores = norm_align_scores(align_scores)
+    multimapped_reads = filter_by_align_score(multimapped_reads, align_scores)
     e_lens = calc_e_lens(multimapped_reads, len_transcripts, read_lens)
     rescue_counts, em_counts = {}, {}
     rescue, em_counts = em(multimapped_reads, unique_counts, align_scores, e_lens)
