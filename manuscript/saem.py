@@ -43,13 +43,6 @@ def accept_sa(ll_old, ll_sa,temp):
 
 
 ## em ##
-def gc_weight(gc, gc_bias, gc_w=0.1, min_w=0.5,max_w=2.0):
-    g_bin = round(gc/gc_w) * gc_w
-
-    if g_bin in gc_bias:
-        return gc_bias[g_bin]
-    bin_idx = min(gc_bias.keys(), key=lambda x: abs(x-g_bin))
-    return max(min(gc_bias[bin_idx], max_w), min_w)
 
 
 def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts):
@@ -57,7 +50,6 @@ def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens, u
     for read, tes in multimapped_reads.items():
         xs = [
             math.log(max(theta[te],1e-300))
-#            + gc_weights[te] 
             + align_scores[read][te]
             - e_lens[read][te]
             for te in tes
@@ -68,17 +60,13 @@ def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens, u
         )
         m = max(xs)
         ll += m + math.log(sum(math.exp(x - m) for x in xs))
-#    for te in theta:
-#        if te == "_noise":
-#            continue
-#        ll += math.log(theta[te])#*unique_counts.get(te,0)
     return ll
 
 
 def init_abundance(multimapped_reads, all_tes, unique_counts):
-    theta = {k:random.random() for k in all_tes}
     theta = {k:1/len(all_tes) for k in all_tes}
-    theta["_noise"] = 1e-2
+    
+    theta["_noise"] = 1/len(all_tes)
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
     return theta
@@ -91,7 +79,6 @@ def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
         xs = []
         for te in tes:
             xs.append(math.log(max(theta[te], 1e-300)) 
-#            + gc_weights[te]
             + align_scores[read][te]
             - e_lens[read][te])
 
@@ -109,7 +96,7 @@ def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
 
 
 def m_step(frac, multimapped_reads, all_tes, unique_counts):
-    theta = {k: unique_counts.get(k, 0) + .1 for k in all_tes}
+    theta = {k: unique_counts.get(k, 0) * .5 for k in all_tes}
 #    theta = {k: 0 for k in all_tes}
     theta["_noise"] = 0
     for read, tes in multimapped_reads.items():
@@ -202,8 +189,8 @@ def norm_align_scores(align_scores):
     align_weight = {}
     for read, tes in align_scores.items():
         max_score = max(tes.values())
-        weights = {te: int(asv)/int(max_score) for te, asv in tes.items()}
-        weights = {te: math.log(int(asv)+1) for te, asv in tes.items()}
+        weights = {te: math.log(int(asv)/int(max_score)) for te, asv in tes.items()}
+#        weights = {te: math.log(int(asv)+1) for te, asv in tes.items()}
         weights["_noise"] = min(weights.values())-1
         align_weight[read] = weights
     return align_weight
@@ -276,8 +263,7 @@ if __name__ == '__main__':
                 unique_seq[name] = buff[9]
 
     align_scores = norm_align_scores(align_scores)
-    gc_bias = calc_gc_bias(unique_seq)
-    gc_weights = {te:.1*gc_weight(gc[te], gc_bias) for te in len_transcripts}
+    gc_weights = {}
     e_lens = calc_e_lens(multimapped_reads, len_transcripts, read_lens)
     rescue_counts, em_counts = {}, {}
     rescue, em_counts = em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens)
