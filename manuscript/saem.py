@@ -5,9 +5,9 @@ import statistics
 
 
 ## sa ##
-def sa(old_abundance, temp):
+def sa(old_abundance, temp, unique_counts):
     sa_abundance = old_abundance.copy()
-    tes = [k for k in sa_abundance.keys()]
+    tes = [k for k in sa_abundance.keys() if unique_counts.get(k, 0) == 0]
     n_neighbors = 1
     
     for idx in random.sample(tes, n_neighbors):
@@ -42,16 +42,7 @@ def accept_sa(ll_old, ll_sa,temp):
 
 
 ## em ##
-def gc_weight(gc, gc_bias, gc_w=0.1, min_w=0.5,max_w=2.0):
-    g_bin = round(gc/gc_w) * gc_w
-
-    if g_bin in gc_bias:
-        return gc_bias[g_bin]
-    bin_idx = min(gc_bias.keys(), key=lambda x: abs(x-g_bin))
-    return max(min(gc_bias[bin_idx], max_w), min_w)
-
-
-def log_likelihood(theta, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts, all_tes):
+def log_likelihood(theta, multimapped_reads, align_scores, e_lens, unique_counts, all_tes):
     ll = 0.0
     for read, tes in multimapped_reads.items():
         xs = [
@@ -75,7 +66,7 @@ def init_abundance(multimapped_reads, all_tes):
     return theta
 
 
-def e_step(theta, multimapped_reads, gc_weights, align_scores, e_lens):
+def e_step(theta, multimapped_reads, align_scores, e_lens):
     frac = {k:{} for k in multimapped_reads}
 
     for read, tes in multimapped_reads.items():
@@ -110,7 +101,6 @@ def theta_to_counts(frac, all_tes):
     
     for read, tes in frac.items():
         vals = sorted(tes.items(), key = lambda x: x[1], reverse = True)
-        #if vals[0][1] / (vals[1][1] + 1e-9) > 2:
         if vals[0][1] / (vals[1][1] + 1e-9) > 1.05:
             counts[vals[0][0]] += 1
         else:
@@ -124,19 +114,19 @@ def get_best(new_abundance, best_abundance, ll_new, ll_best):
     return best_abundance, ll_best
     
 
-def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens):
+def em(multimapped_reads, unique_counts, align_scores, e_lens):
     threshold = 1e-6
     temp = 1.0
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
     old_abundance = init_abundance(multimapped_reads, all_tes)
     cooling_rate = find_cooling_rate(len(all_tes))
     best_abundance = old_abundance
-    ll_old = log_likelihood(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts, all_tes)
+    ll_old = log_likelihood(old_abundance, multimapped_reads, align_scores, e_lens, unique_counts, all_tes)
     ll_best = ll_old
 
     for i in range(1,10000):
-        sa_abundance = sa(old_abundance, temp)
-        ll_sa = log_likelihood(sa_abundance, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts, all_tes)
+        sa_abundance = sa(old_abundance, temp, unique_counts)
+        ll_sa = log_likelihood(sa_abundance, multimapped_reads, align_scores, e_lens, unique_counts, all_tes)
         accept, lvl = accept_sa(ll_old, ll_sa, temp)
 
         if accept and temp > .05:
@@ -146,22 +136,22 @@ def em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens):
             best_abundance, ll_best = get_best(sa_abundance, best_abundance, ll_sa, ll_best)
             temp = reduce_temp(temp, cooling_rate)
             continue
-        elif temp < .05:
+        elif temp < .05 and i > 100:
             old_abundance, ll_old = get_best(old_abundance, best_abundance, ll_old, ll_best)
-            return theta_to_counts(e_step(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens), all_tes)
+#            return theta_to_counts(e_step(old_abundance, multimapped_reads, align_scores, e_lens), all_tes)
             
             
-        frac = e_step(old_abundance, multimapped_reads, gc_weights, align_scores, e_lens)
+        frac = e_step(old_abundance, multimapped_reads, align_scores, e_lens)
         new_abundance = m_step(frac, multimapped_reads, all_tes, unique_counts)
-        ll_new = log_likelihood(new_abundance, multimapped_reads, gc_weights, align_scores, e_lens, unique_counts, all_tes)
+        ll_new = log_likelihood(new_abundance, multimapped_reads, align_scores, e_lens, unique_counts, all_tes)
         diff = ll_new - ll_old
         print(str(i) + "\treject\t" + str(ll_new) + "\t" + str(ll_best) + "\t" + str(temp))
         if abs(diff) < threshold:
-            return theta_to_counts(e_step(new_abundance, multimapped_reads, gc_weights, align_scores, e_lens), all_tes)
+            return theta_to_counts(e_step(new_abundance, multimapped_reads, align_scores, e_lens), all_tes)
         temp = reduce_temp(temp, cooling_rate)
         old_abundance = new_abundance
         ll_old = ll_new
-    return theta_to_counts(e_step(new_abundance, multimapped_reads, gc_weights, align_scores, e_lens), all_tes)
+    return theta_to_counts(e_step(new_abundance, multimapped_reads, align_scores, e_lens), all_tes)
 
 
 ## LL model setup ##
@@ -171,7 +161,6 @@ def norm_align_scores(align_scores):
         max_score = max(tes.values())
         weights = {te: int(asv)/int(max_score) for te, asv in tes.items()}
         weights = {te: math.log(int(asv)+1) for te, asv in tes.items()}
-        weights["_noise"] = min(weights.values())-1
         align_weight[read] = weights
     return align_weight
 
@@ -182,8 +171,6 @@ def calc_e_lens(multimapped_reads, len_transcripts, read_lens):
     for read, tes in multimapped_reads.items():
         for te in tes:
             e_lens[read][te] = math.log(max(len_transcripts[te] - read_lens[read] + 1, 1))
-    for read in multimapped_reads:
-        e_lens[read]["_noise"] = math.log(max(len_max - read_lens[read] +1,1))
     return e_lens
 
 
@@ -241,15 +228,14 @@ if __name__ == '__main__':
                 unique_seq[name] = buff[9]
 
     align_scores = norm_align_scores(align_scores)
-    gc_weights = {}
     e_lens = calc_e_lens(multimapped_reads, len_transcripts, read_lens)
     rescue_counts, em_counts = {}, {}
-    rescue, em_counts = em(multimapped_reads, unique_counts, gc_weights, align_scores, e_lens)
+    rescue, em_counts = em(multimapped_reads, unique_counts, align_scores, e_lens)
 
 
     rescue_reads = {k:v for k,v in multimapped_reads.items() if k in rescue}
     print(len(rescue))
-    toss, rescue_counts = em(rescue_reads, unique_counts, gc_weights, align_scores, e_lens)
+    toss, rescue_counts = em(rescue_reads, unique_counts, align_scores, e_lens)
 
     all_tes = {k:unique_counts.get(k, 0) + em_counts.get(k, 0) + rescue_counts.get(k,0) for k in len_transcripts}
 
