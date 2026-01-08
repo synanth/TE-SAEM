@@ -45,14 +45,11 @@ def accept_sa(ll_old, ll_sa,temp):
 ## em ##
 def log_likelihood(theta, multimapped_reads, weights, unique_counts):
     ll = 0.0
+    log_theta = {k:math.log(v) for k,v in theta.items()}
     for read, tes in multimapped_reads.items():
-        xs = [
-            math.log(theta[te])
-            + weights[read][te] 
-            for te in tes
-        ]
-        xs.append(math.log(max(theta["_noise"],1e-100))
-        + weights[read]["_noise"]
+        xs = [log_theta[te] + weights[read][te] for te in tes]
+
+        xs.append(log_theta["_noise"] + weights[read]["_noise"]
         )
         m = max(xs)
         ll += m + math.log(sum(math.exp(x - m) for x in xs))
@@ -73,15 +70,13 @@ def init_abundance(multimapped_reads, all_tes, unique_counts):
 
 def e_step(theta, multimapped_reads, weights):
     frac = {k:{} for k in multimapped_reads}
+    log_theta = {k: math.log(v) for k,v in theta.items()}
 
     for read, tes in multimapped_reads.items():
         xs = []
         for te in tes:
-            xs.append(math.log(theta[te]) 
-            + weights[read][te])
-
-        xs.append(math.log(max(theta["_noise"], 1e-100))
-        + weights[read]["_noise"])
+            xs.append(log_theta[te] + weights[read][te])
+        xs.append(log_theta["_noise"] + weights[read]["_noise"])
 
         tes_plus = tes + ["_noise"]
         m = max(xs)
@@ -130,7 +125,7 @@ def adaptive_cooling(temp, rate):
     if rate <= .4:
         temp *= .998
     else:
-        temp *= .9
+        temp *= .95
     return temp
 
 
@@ -187,7 +182,7 @@ def gc_bin(gc, bin_size):
     return round(gc / bin_size) * bin_size
 
 
-def calc_gc_bias(unique_seqs, bin_size = 0.01, pseudo_count = 5):
+def calc_gc_bias(unique_seqs, bin_size = 0.01, pseudo_count = 1):
     counts = {}
     for seq in unique_seqs.values():
         gc = gc_bin(gc_content(seq), bin_size)
@@ -214,10 +209,10 @@ def build_mm_bias(multimapped_reads, transcript_gc, gc_bias):
 def norm_align_scores(align_scores):
     align_weight = {}
     for read, tes in align_scores.items():
-        max_score = max(tes.values())
-        weights = {te: int(asv)/int(max_score) for te, asv in tes.items()}
-        weights = {te: math.log(int(asv)+1) for te, asv in tes.items()}
-        weights["_noise"] = min(weights.values()) - 10
+        max_score = max([int(x) for x in tes.values()])
+        weights = {te: math.log(int(asv)+1) - math.log(max_score + 1) for te, asv in tes.items()}
+       # weights = {te: math.log(int(asv)+1) for te, asv in tes.items()}
+        weights["_noise"] = min(weights.values()) - 1
         align_weight[read] = weights
     return align_weight
 
