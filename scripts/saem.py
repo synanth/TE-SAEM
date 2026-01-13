@@ -13,7 +13,7 @@ def sa(old_abundance, temp):
 
     for idx in random.sample(tes, n_neighbors):
         log_theta = math.log(sa_abundance[idx])
-        delta = random.gauss(0, math.sqrt(temp)*.1)
+        delta = random.gauss(0, math.sqrt(temp)*.1* min(1, log_theta+ 10))
         sa_abundance[idx] = max(math.exp(log_theta+delta), 1e-100)
    
     sa_abundance["_noise"] = old_abundance["_noise"]
@@ -60,7 +60,7 @@ def log_likelihood(theta, multimapped_reads, weights, unique_counts):
 
 def init_abundance(multimapped_reads, all_tes, unique_counts):
     theta = {k:1/len(all_tes) for k in all_tes}
-    theta["_noise"] = 1e-3
+    theta["_noise"] = 1e-2
     means_sum = sum(theta.values()) 
     theta = {k:(v/means_sum) for k,v in theta.items()}
     return theta
@@ -86,12 +86,12 @@ def e_step(theta, multimapped_reads, weights):
 
 
 def m_step(frac, multimapped_reads, all_tes, unique_counts):
-    theta = {k: unique_counts.get(k, 0) + 0 for k in all_tes} ## .1 
-    theta["_noise"] = 1e-3
+    theta = {k: unique_counts.get(k, 0) for k in all_tes} ## .1 
+    theta["_noise"] = 1e-2
     for read, tes in multimapped_reads.items():
         for te in tes:
-            theta[te] += frac[read][te]
-        theta["_noise"] += frac[read]["_noise"]
+            theta[te] += frac[read][te] + .1
+        theta["_noise"] += frac[read]["_noise"] + 1
     theta = {k:max(v, 1e-9) for k,v in theta.items()}
     theta_sum = sum(theta.values())
     theta = {k:v/theta_sum for k,v in theta.items()}
@@ -201,9 +201,9 @@ def norm_align_scores(align_scores):
     align_weight = {}
     for read, tes in align_scores.items():
         max_score = max([int(x) for x in tes.values()])
-#        weights = {te: math.log(int(asv)+1) - math.log(max_score + 1) for te, asv in tes.items()}
-        weights = {te: math.log(int(asv)+1) for te, asv in tes.items()} ## added max score
-        weights["_noise"] = min(weights.values()) - 1
+        weights = {te: math.log(int(asv)+1) - math.log(max_score + 1) for te, asv in tes.items()}
+#        weights = {te: math.log(int(asv)+1) for te, asv in tes.items()} ## added max score
+        weights["_noise"] = min(weights.values()) - .5
         align_weight[read] = weights
     return align_weight
 
@@ -347,9 +347,8 @@ if __name__ == '__main__':
 
     all_tes = {k:unique_counts.get(k, 0) + em_counts.get(k, 0) + rescue_counts.get(k,0) for k in len_transcripts}
 
-    out_loc = base_loc + "manuscript/out/saem_" + n_run + ".out"
 
-    print("Writing count table to: " + out_loc)
-    with open(out_loc, "w") as f:
+    print("Writing count table to: " + str(args.out))
+    with open(args.out, "w") as f:
         for k,v in all_tes.items():
             f.write(k + "," + str(v) + "\n")
