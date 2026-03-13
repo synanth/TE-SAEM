@@ -4,7 +4,7 @@ TE-SAEM is a simulated annealing expectation maximization algorithm designed to 
  
 Linux Installation:  
     - [Install conda](https://www.anaconda.org)  
-    - Install package with:
+    - Install package with:  
         - "conda install TE-SAEM" (currently unpublished)
 
 Parameterization:  
