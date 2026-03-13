@@ -86,12 +86,12 @@ def e_step(theta, multimapped_reads, weights):
 
 
 def m_step(frac, multimapped_reads, all_tes, unique_counts):
-    theta = {k: unique_counts.get(k, 0) for k in all_tes} ## .1 
+    theta = {k: 1.5*unique_counts.get(k, 0) for k in all_tes} ## .1 
     theta["_noise"] = 1e-2
     for read, tes in multimapped_reads.items():
         for te in tes:
-            theta[te] += frac[read][te] + .1
-        theta["_noise"] += frac[read]["_noise"] + 1
+            theta[te] += frac[read][te] #+ .1
+        theta["_noise"] += frac[read]["_noise"] #+ .5
     theta = {k:max(v, 1e-9) for k,v in theta.items()}
     theta_sum = sum(theta.values())
     theta = {k:v/theta_sum for k,v in theta.items()}
@@ -118,7 +118,7 @@ def get_best(new_abundance, best_abundance, ll_new, ll_best):
     return best_abundance, ll_best
 
 
-def em(multimapped_reads, unique_counts, weights, counts_threshold=1.05):
+def em(multimapped_reads, unique_counts, weights, counts_threshold=1.1):
     threshold = 1e-4
     temp = 1.0
     all_tes = list(set([x for sublist in multimapped_reads.values() for x in sublist]))
@@ -268,20 +268,25 @@ def parse_multimapped(loc):
     return multimapped_reads, align_scores
 
 
-def parse_sam(loc):
-    unique_seq, read_lens = {}, {}
+def parse_lens(loc):
+    read_lens = {}
     with open(loc, "r") as f:
         lines = f.readlines()
         for line in lines:
-            if line[0] == "@":
-                continue
-            buff = line.strip().split()
-            name = buff[0].split("/")[0]
-            read_lens[name] = len(buff[9])
-            nh = next((s for s in buff if "NH" in s), None)
-            if nh != None and int(nh[-1]) >= 1:
-                unique_seq[name] = buff[9]
-    return unique_seq, read_lens
+            buff = line.strip().split(",")
+            read_lens[buff[0]] = int(buff[1])
+    return read_lens
+
+
+def parse_seqs(loc):
+    read_lens = {}
+    with open(loc, "r") as f:
+        lines = f.readlines()
+        for line in lines:
+            buff = line.strip().split(",")
+            read_lens[buff[0]] = buff[1]
+    return read_lens
+
 
 def parse_args():
     parser = argparse.ArgumentParser(prog="TE-SAEM: SAEM",
@@ -313,21 +318,18 @@ def parse_args():
 
 ## driver fxn ##
 if __name__ == '__main__':
-    n_run = "wut"
 
-    base_loc = "/home/stexocae/li_lab/saem/"
-    
-    print("Prepping data for SAEM")
     args = parse_args()
     gc, len_transcripts = parse_gtf(args.gtf)
     unique_counts = parse_unique(str(args.data) + "/unique.counts") 
     multimapped_reads, align_scores = parse_multimapped(str(args.data) + "/multi.translation")
-    unique_seq, read_lens = parse_sam(str(args.data) + "/star.sam")
+    read_lens = parse_lens(str(args.data) + "/read_lens.txt")
+    read_seqs = parse_seqs(str(args.data) + "/read_seqs.txt")
     
     print("Calculating weights for log-likelihood")
 
     align_scores = norm_align_scores(align_scores)
-    bias = calc_gc_bias(unique_seq)
+    bias = calc_gc_bias(read_seqs)
     gc_bias = build_mm_bias(multimapped_reads, gc, bias)
     e_lens = calc_e_lens(multimapped_reads, len_transcripts, read_lens)
     weights = combine_weights(multimapped_reads, align_scores, gc_bias, e_lens)
