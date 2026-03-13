@@ -3,8 +3,9 @@
 TE-SAEM is a simulated annealing expectation maximization algorithm designed to quantify transposable elements in bulk RNA-Seq data.
  
 Linux Installation:  
-    - [Install conda](www.anaconda.org)  
-    - Install package  
+    - [Install conda](https://www.anaconda.org)  
+    - Install package with:
+        - "conda install TE-SAEM" (currently unpublished)
 
 Parameterization:  
     - File structure control is done via params.ini (automatically populated with setup.py)  
