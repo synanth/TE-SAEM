@@ -1,9 +1,3 @@
-#####################
-#
-#  Fetches FA and//or GTF
-#
-##################
-
 import sys
 import subprocess
 import os
@@ -63,86 +57,6 @@ def extract_lens(gtf_loc):
     with open(len_loc, "w") as f:
         for l in lens:
             f.write(str(l) + "\n")
-
-
-def load_ini(loc):
-    params = dict.fromkeys(["genome_idx", "buffer", "clean_buff"])
-    with open(loc) as f:
-        raw = [x.strip() for x in f.readlines()]
-    for param in params:
-        for i, item in enumerate(raw):
-            if param in item:
-                params[param] = item.split()[-1].replace('"', '').replace("./", loc[:-4])
-    return params
-            
-
-def check_ini():
-    default_loc = os.getcwd()[:-7] + ".ini"
-    if os.path.exists(default_loc):
-        print("\t.ini found, loading parameters")
-        params = load_ini(default_loc)
-    else:
-        print("\tno .ini found, generating with defaults")
-    return params
-
-
-def reorder_genome(loc):
-    chrs = {}
-    with open(loc, "r") as f:
-        name = None
-        seq = []
-        i = 0
-        for line in f:
-            buff = line.strip()
-            if buff[0] == ">":
-                if name is not None:
-                    chrs[name] = seq
-                name = buff[1:]
-                print(name)
-                seq = []
-            else:
-                seq += [buff]
-            i += 1
-        chrs[name] = seq
-    print(i)
-    chrs_sorted = sorted([(k,v) for k,v in chrs.items()], key = lambda x: int(x[0][3:]) if x[0][3:].isnumeric() else ord(x[0][3:]))
-    
-    out = []
-
-    for x in chrs_sorted:
-        out.append(">" + x[0])
-        print(x[0])
-        start = 0
-        for y in x[1]:
-            out.append(y)
-    with open(loc , "w") as f:
-        for line in out:
-            f.write(line + "\n")
-
-
-def generate_genome_idx(loc):
-    print("\tChecking for genome fasta")
-    if not os.path.exists(loc + "hs1.fa"):
-        print("\tGenome fasta not found, downloading from UCSC")
-        wget_call = "wget -q --show-progress -P " + loc + " https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.fa.gz"
-        subprocess.run(wget_call, shell=True)
-        gunzip_call = "gunzip " +  loc + "hs1.fa.gz"
-        subprocess.run(gunzip_call, shell=True)
-        print("\tGenome fasta downloaded")
-        reorder_genome(loc + "hs1.fa")
-    print("\tGenerating genome index")
-    star_call = "STAR --runThreadN 14 --runMode genomeGenerate --genomeDir " + loc + "/star_hs1_idx/ --genomeFastaFiles " + loc + "hs1.fa"
-    #star_call = "STAR --runThreadN 1 --runMode genomeGenerate --genomeDir " + loc + " --genomeFastaFiles " + loc + "hs1.fa > /dev/null"
-    subprocess.run(star_call, shell=True)
-    
-    ## clear data ##   
-    clean_call = "rm -rf _STARtmp"
-    subprocess.run(clean_call, shell=True)
-
-def check_genome_idx(loc):
-    if not os.path.exists(loc):
-        print("\tSTAR genome index does not exist")
-        generate_genome_idx(loc.replace("SAindex", ""))
 
 
 def check_annotation(loc):

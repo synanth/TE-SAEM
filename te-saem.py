@@ -10,7 +10,6 @@
 #                                                        #
 ##########################################################
 
-
 import os
 import pathlib
 import argparse
@@ -69,43 +68,59 @@ def check_read(read_path):
         exit()
 
 
-## Driver function ##
-if __name__ == '__main__':
-    ## Clear screen ##
-    os.system("clear")
+## Set up argument parser ##
+def setup_parser(program_path):
 
-    ## Set up paths ##
-    program_path = "/".join(os.path.abspath(__file__).split("/")[:-1]) + "/"
-    scripts_path = program_path + "scripts/"
-    
-
-    ## Set up argument parser ##
     parser = argparse.ArgumentParser(prog="TE-SAEM",
              description="Quantification of TE expression from bulk RNA-Seq data through the utilization of a simulated annealing based expectation maximization algorithm",
              epilog="For help//queries please visit our github: https://github.com/synanth/TE-SAEM")
+    
+    groups = parser.add_mutually_exclusive_group(required=True)
 
+    groups.add_argument("--setup",
+                        action ='store_true',
+                        dest = "setup",
+                        help = "Generate reference files (default: %(default)s)")
+    parser.add_argument("-r", 
+                        type = pathlib.Path,
+                        metavar = "ref",
+                        dest = "ref",
+                        help = "Location of refences folder (default: %(default)s)")
+    parser.add_argument("-s", 
+                        type = str,
+                        metavar = "species",
+                        dest = "species",
+                        default = "hs1",
+                        help = "Species in UCSC nomenclature (default: %(default)s)")
 
+    parser.add_argument("--create_idx",
+                        type = pathlib.Path,
+                        metavar = "idx",
+                        dest = "idx",
+                        help = "Generate STAR index at path (default: %(default)s)")
+    parser.add_argument("--fetch_gtf",
+                        type = pathlib.Path,
+                        metavar = "gtf",
+                        dest = "gtf",
+                        help = "Generate TE GTF at path (default: %(default)s)")
     parser.add_argument("-i", 
                         type = pathlib.Path,
                         default = program_path + "params.ini",
                         metavar = "ini",
                         dest = "ini",
                         help = ".ini file location (default: %(default)s)")
-    parser.add_argument("-1", 
+    groups.add_argument("-1", 
                         type = pathlib.Path,
-                        required = True,
                         metavar = "read1",
                         dest = "read1",
                         help = "Location of read1 (default: %(default)s)")
     parser.add_argument("-2", 
                         type = pathlib.Path,
-                        required = True,
                         metavar = "read2",
                         dest = "read2",
                         help = "Location of read2 (default: %(default)s)")
     parser.add_argument("-o",
                         type = pathlib.Path,
-                        required = True,
                         default = "te-counts.csv",
                         metavar = "out",
                         dest = "out",
@@ -122,10 +137,42 @@ if __name__ == '__main__':
                         metavar = "threads",
                         dest = "threads",
                         help = "Number of threads to use (default: %(default)s)")
+    return parser
 
 
-    ## Check parameters ##
+def setup(args, program_path):
+    print("Running initial setup.")
+    fa_loc = program_path + "scripts/fetch_fa.py"
+    fa_call = "python3 " + fa_loc + ""
+    
+    if not args.ref:
+        gtf_loc, fa_loc = load_ini(args, program_path)
+        fa_call += " " + str(fa_loc) + " " + args.species + " " + str(args.threads)
+    else:
+        quit()
+    subprocess.run(fa_call, shell=True)
+    quit()
+
+
+
+
+## Driver function ##
+if __name__ == '__main__':
+    ## Clear screen ##
+    os.system("clear")
+
+    ## Set up paths ##
+    program_path = "/".join(os.path.abspath(__file__).split("/")[:-1]) + "/"
+    scripts_path = program_path + "scripts/"
+    
+
+    ## Set up argument parser ##
+    parser = setup_parser(program_path)
+
+    ## Check arguments ##
     args = parser.parse_args()
+    if args.setup:
+        setup(args, program_path)
     gtf_loc, genome_loc = load_ini(args, program_path)
     working_dir = get_working_dir(args)
     check_read(args.read1)

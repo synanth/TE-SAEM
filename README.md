@@ -7,7 +7,9 @@ Linux Installation:
     - Create new conda environment: `conda create -n te-saem`  
     - Activate the environment: `conda activate te-saem`  
     - Install package with: `conda install te-saem` (currently unpublished)  
-    - Fetch genome and TE GTF via `scripts/fetch_resources.py`
+    
+Resource generation:  
+    - Fetch genome and TE GTF via `te-saem --setup`
 
 Parameterization:  
     - File structure control is done via params.ini (automatically populated with setup.py)  
